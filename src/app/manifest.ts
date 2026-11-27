@@ -2,11 +2,13 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "ZANIMA TATTOO",
     short_name: "ZANIMA",
     description:
       "Plataforma exclusiva do estúdio ZANIMA TATTOO — Fine Line, Floral e Minimalista.",
     start_url: "/",
+    scope: "/",
     display: "standalone",
     orientation: "portrait",
     background_color: "#101114",

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Shield } from "lucide-react";
@@ -6,6 +7,16 @@ import { BrandLogo } from "@/components/brand-mark";
 import { LoginForm } from "@/components/public/public-sheet-content";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "ZANIMA Admin | Acesso Administrativo",
+  manifest: "/admin-manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "ZANIMA Admin",
+  },
+};
 
 export default async function AdminPortalEntryPage({
   searchParams,
@@ -22,7 +33,7 @@ export default async function AdminPortalEntryPage({
     params.next && params.next.startsWith("/admin") ? params.next : "/admin";
 
   return (
-    <div className="min-h-screen flex flex-col justify-between bg-[var(--bg-canvas)] text-[var(--text-primary)] px-4 py-5">
+    <div className="min-h-dvh flex flex-col justify-between bg-[var(--bg-canvas)] text-[var(--text-primary)] px-4 py-5">
       <div className="max-w-sm w-full mx-auto">
         <Link
           href="/"
