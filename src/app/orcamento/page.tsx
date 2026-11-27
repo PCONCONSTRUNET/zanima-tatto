@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Upload } from "lucide-react";
 import { BrandLogo, PconSignature } from "@/components/brand-mark";
 import { TATTOO_STYLES } from "@/lib/domain-labels";
+import { compressImageFiles } from "@/lib/image-compress";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 
 function OrcamentoForm() {
@@ -43,10 +44,9 @@ function OrcamentoForm() {
       fd.append("availabilityText", availabilityText);
       fd.append("ideaDescription", ideaDescription);
       fd.append("clientNotes", clientNotes);
-      if (files) {
-        Array.from(files)
-          .slice(0, 4)
-          .forEach((f) => fd.append("references", f));
+      if (files && files.length > 0) {
+        const compressed = await compressImageFiles(files, 4);
+        compressed.forEach((f) => fd.append("references", f));
       }
 
       const res = await fetch("/api/public/quotes", {

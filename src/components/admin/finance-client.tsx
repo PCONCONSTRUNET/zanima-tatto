@@ -120,6 +120,7 @@ type TransferItem = {
   toContext: string;
   amount: number;
   transferDate: string;
+  createdAt?: string;
   description: string;
   transferKind: string;
 };
@@ -375,6 +376,7 @@ function FinanceInner({
     personalTransferAccounts[0]?.id || ""
   );
   const [deleteClosingId, setDeleteClosingId] = useState<string | null>(null);
+  const [deleteTransferId, setDeleteTransferId] = useState<string | null>(null);
 
   const parsedCommissionPct = useMemo(() => {
     const raw = Number(commissionPctInput.replace(",", "."));
@@ -407,6 +409,15 @@ function FinanceInner({
     });
   }, [initialTransactions, fixedContext, matchesSelectedPeriod]);
 
+  const periodTransfers = useMemo(() => {
+    return initialTransfers.filter((tr) => {
+      if (tr.fromContext !== fixedContext && tr.toContext !== fixedContext) {
+        return false;
+      }
+      return matchesSelectedPeriod(tr.transferDate);
+    });
+  }, [initialTransfers, fixedContext, matchesSelectedPeriod]);
+
   const filteredTx = useMemo(() => {
     return periodTx.filter((t) => {
       if (txTypeFilter === "INCOME") return t.type === "INCOME";
@@ -417,20 +428,60 @@ function FinanceInner({
     });
   }, [periodTx, txTypeFilter]);
 
-  // Agrupamento estilo Apple Wallet / Nubank por dia
-  const groupedTx = useMemo(() => {
-    const groups: Array<{ dateKey: string; items: TxItem[] }> = [];
-    const map = new Map<string, TxItem[]>();
-    for (const item of filteredTx) {
-      const list = map.get(item.competenceDate) || [];
+  const filteredTransfers = useMemo(() => {
+    if (txTypeFilter === "PENDING") return [];
+    return periodTransfers.filter((tr) => {
+      const isIncoming = tr.toContext === fixedContext;
+      if (txTypeFilter === "INCOME") return isIncoming;
+      if (txTypeFilter === "EXPENSE") return !isIncoming;
+      return true;
+    });
+  }, [periodTransfers, fixedContext, txTypeFilter]);
+
+  // Agrupamento unificado estilo Apple Wallet / Nubank por dia (Lançamentos + Comissões/Transferências)
+  const groupedExtrato = useMemo(() => {
+    type ExtratoEntry =
+      | { kind: "tx"; sortTime: string; dateKey: string; tx: TxItem }
+      | {
+          kind: "transfer";
+          sortTime: string;
+          dateKey: string;
+          transfer: TransferItem;
+        };
+
+    const entries: ExtratoEntry[] = [
+      ...filteredTx.map((tx) => ({
+        kind: "tx" as const,
+        dateKey: tx.competenceDate,
+        sortTime: tx.createdAt || tx.competenceDate,
+        tx,
+      })),
+      ...filteredTransfers.map((transfer) => ({
+        kind: "transfer" as const,
+        dateKey: transfer.transferDate,
+        sortTime: transfer.createdAt || transfer.transferDate,
+        transfer,
+      })),
+    ];
+
+    entries.sort((a, b) => {
+      const d = b.dateKey.localeCompare(a.dateKey);
+      if (d !== 0) return d;
+      return b.sortTime.localeCompare(a.sortTime);
+    });
+
+    const groups: Array<{ dateKey: string; items: ExtratoEntry[] }> = [];
+    const map = new Map<string, ExtratoEntry[]>();
+    for (const item of entries) {
+      const list = map.get(item.dateKey) || [];
       list.push(item);
-      map.set(item.competenceDate, list);
+      map.set(item.dateKey, list);
     }
     for (const [dateKey, items] of map.entries()) {
       groups.push({ dateKey, items });
     }
     return groups;
-  }, [filteredTx]);
+  }, [filteredTx, filteredTransfers]);
 
   const filteredAppointments = useMemo(() => {
     if (!isStudio) return [];
@@ -504,10 +555,28 @@ function FinanceInner({
       0
     );
 
+    const transfersIn = periodTransfers
+      .filter((tr) => tr.toContext === fixedContext)
+      .reduce((acc, tr) => acc + tr.amount, 0);
+    const transfersOut = periodTransfers
+      .filter((tr) => tr.fromContext === fixedContext)
+      .reduce((acc, tr) => acc + tr.amount, 0);
+
+    const displayIn = isStudio ? settledIn : settledIn + transfersIn;
+    const displayOut = settledOut;
+    const displayNet = isStudio
+      ? settledIn - settledOut
+      : settledIn + transfersIn - (settledOut + transfersOut);
+
     return {
       settledIn,
       settledOut,
       netResult: settledIn - settledOut,
+      displayIn,
+      displayOut,
+      displayNet,
+      transfersIn,
+      transfersOut,
       pendingIn,
       pendingOut,
       pixIn,
@@ -516,7 +585,14 @@ function FinanceInner({
       appointmentsPending,
       accountsBalance,
     };
-  }, [periodTx, filteredAppointments, initialAccounts]);
+  }, [
+    periodTx,
+    periodTransfers,
+    fixedContext,
+    isStudio,
+    filteredAppointments,
+    initialAccounts,
+  ]);
 
   const activeMonthKey = useMemo(
     () => (periodMode === "DAY" ? dayFilter.slice(0, 7) : monthFilter),
@@ -637,8 +713,10 @@ function FinanceInner({
   const handleUploadReceipt = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
+    const { compressImageFile } = await import("@/lib/image-compress");
+    const file = await compressImageFile(rawFile);
     const fd = new FormData();
     fd.append("file", file);
     fd.append("visibility", "ADMIN_PRIVATE");
@@ -901,6 +979,23 @@ function FinanceInner({
     }
   };
 
+  const handleDeleteTransfer = async () => {
+    if (!deleteTransferId) return;
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/finance/transfers?id=${encodeURIComponent(deleteTransferId)}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setDeleteTransferId(null);
+        router.refresh();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCreateConfigEntity = async (
     payload: Record<string, unknown>,
     close: () => void
@@ -1081,16 +1176,26 @@ function FinanceInner({
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs text-[var(--text-secondary)]">
-              {isStudio ? "Resultado do estúdio" : "Saldo do período"}
+              {isStudio ? "Em caixa agora (contas do estúdio)" : "Em contas agora (Pessoal)"}
             </p>
             <p className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--text-primary)] tabular-nums mt-1">
-              {formatBRL(metrics.netResult, hideValues)}
+              {formatBRL(metrics.accountsBalance, hideValues)}
             </p>
-            <p className="text-[11px] text-[var(--text-secondary)] tabular-nums mt-1">
-              Em contas agora:{" "}
-              <span className="font-semibold text-[var(--text-primary)]">
-                {formatBRL(metrics.accountsBalance, hideValues)}
+            <p className="text-[11px] text-[var(--text-secondary)] tabular-nums mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span>
+                {isStudio ? "Resultado do período:" : "Saldo do período:"}{" "}
+                <span className="font-semibold text-[var(--text-primary)]">
+                  {formatBRL(metrics.displayNet, hideValues)}
+                </span>
               </span>
+              {isStudio && metrics.transfersOut > 0 ? (
+                <span>
+                  • Retiradas/Comissões:{" "}
+                  <span className="font-semibold text-[var(--brand-champagne)]">
+                    − {formatBRL(metrics.transfersOut, hideValues)}
+                  </span>
+                </span>
+              ) : null}
             </p>
           </div>
 
@@ -1133,7 +1238,7 @@ function FinanceInner({
                 Entrou
               </p>
               <p className="text-sm font-semibold text-[var(--text-primary)] tabular-nums truncate">
-                {formatBRL(metrics.settledIn, hideValues)}
+                {formatBRL(metrics.displayIn, hideValues)}
               </p>
             </div>
           </div>
@@ -1306,6 +1411,13 @@ function FinanceInner({
               </div>
             );
           })()}
+
+          {metrics.transfersOut > 0 ? (
+            <p className="text-[11px] text-[var(--brand-champagne)] font-medium tabular-nums">
+              Comissões / retiradas já transferidas neste período: −{" "}
+              {formatBRL(metrics.transfersOut, hideValues)}
+            </p>
+          ) : null}
         </section>
       ) : null}
 
@@ -1678,7 +1790,7 @@ function FinanceInner({
             ))}
           </div>
 
-          {groupedTx.length === 0 ? (
+          {groupedExtrato.length === 0 ? (
             <div className="rounded-[24px] bg-[var(--bg-surface)] border border-[var(--border-default)] p-6">
               <EmptyState
                 icon={<Wallet className="h-5 w-5" strokeWidth={1.5} />}
@@ -1692,13 +1804,76 @@ function FinanceInner({
             </div>
           ) : (
             <div className="space-y-3">
-              {groupedTx.map((group) => (
+              {groupedExtrato.map((group) => (
                 <div key={group.dateKey} className="space-y-1.5">
                   <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-secondary)] capitalize">
                     {formatDayGroupLabel(group.dateKey, todayStr)}
                   </p>
                   <div className="rounded-[24px] bg-[var(--bg-surface)] border border-[var(--border-default)] divide-y divide-[var(--border-default)] overflow-hidden">
-                    {group.items.map((t) => {
+                    {group.items.map((entry) => {
+                      if (entry.kind === "transfer") {
+                        const tr = entry.transfer;
+                        const isIncoming = tr.toContext === fixedContext;
+                        return (
+                          <div
+                            key={`tr-${tr.id}`}
+                            className="w-full px-4 py-3.5 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+                                  isIncoming
+                                    ? "bg-[var(--status-success-bg)] text-[var(--status-success)]"
+                                    : "bg-[var(--brand-champagne-subtle)] text-[var(--brand-champagne)]"
+                                }`}
+                              >
+                                <ArrowLeftRight className="h-4 w-4" strokeWidth={1.8} />
+                              </div>
+
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                                  {tr.description}
+                                </p>
+                                <p className="text-[11px] text-[var(--text-secondary)] truncate">
+                                  {tr.fromAccountName} → {tr.toAccountName}
+                                  {tr.createdAt ? ` • ${formatTimeBR(tr.createdAt)}` : ""}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0 flex items-center gap-2">
+                              <div>
+                                <p
+                                  className={`text-sm font-semibold tabular-nums ${
+                                    isIncoming
+                                      ? "text-[var(--status-success)]"
+                                      : "text-[var(--brand-champagne)]"
+                                  }`}
+                                >
+                                  {isIncoming ? "+" : "−"}{" "}
+                                  {formatBRL(tr.amount, hideValues)}
+                                </p>
+                                <p className="text-[10px] font-medium text-[var(--text-secondary)]">
+                                  {isIncoming ? "Comissão recebida" : "Repasse p/ Pessoal"}
+                                </p>
+                              </div>
+                              {isOwner ? (
+                                <button
+                                  type="button"
+                                  aria-label="Estornar transferência"
+                                  title="Estornar e excluir transferência"
+                                  onClick={() => setDeleteTransferId(tr.id)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const t = entry.tx;
                       const isPending =
                         t.status === "PENDING" || t.status === "OVERDUE";
                       const isIncome = t.type === "INCOME";
@@ -2115,9 +2290,22 @@ function FinanceInner({
                         • {formatDateBR(tr.transferDate)}
                       </p>
                     </div>
-                    <span className="font-semibold text-sm tabular-nums shrink-0">
-                      {formatBRL(tr.amount, hideValues)}
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-semibold text-sm tabular-nums">
+                        {formatBRL(tr.amount, hideValues)}
+                      </span>
+                      {isOwner ? (
+                        <button
+                          type="button"
+                          aria-label="Estornar transferência"
+                          title="Estornar e excluir"
+                          onClick={() => setDeleteTransferId(tr.id)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -3545,6 +3733,18 @@ function FinanceInner({
         loading={saving}
         onConfirm={handleDeleteClosing}
         onCancel={() => !saving && setDeleteClosingId(null)}
+      />
+
+      <ConfirmModal
+        open={Boolean(deleteTransferId)}
+        title="Estornar transferência de comissão"
+        description="O valor será devolvido para a conta de origem do Estúdio e descontado da conta Pessoal. Deseja continuar?"
+        confirmLabel="Estornar"
+        cancelLabel="Cancelar"
+        danger
+        loading={saving}
+        onConfirm={handleDeleteTransfer}
+        onCancel={() => !saving && setDeleteTransferId(null)}
       />
     </div>
   );

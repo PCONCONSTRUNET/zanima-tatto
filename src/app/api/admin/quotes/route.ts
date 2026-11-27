@@ -22,6 +22,7 @@ const createQuoteSchema = z.object({
   paymentTerms: z.string().trim().optional(),
   validUntil: z.string().optional(),
   adminNotes: z.string().trim().optional(),
+  referenceFileIds: z.array(z.string().min(1)).max(6).optional(),
 });
 
 export async function GET(request: Request) {
@@ -88,6 +89,7 @@ export async function POST(request: Request) {
         paymentTerms: d.paymentTerms || null,
         validUntil,
         adminNotes: d.adminNotes || null,
+        referenceFileIds: d.referenceFileIds ?? [],
         status: d.quotedAmount ? "ANALYZING" : "NEW",
       },
     });

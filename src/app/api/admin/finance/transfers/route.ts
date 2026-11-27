@@ -110,3 +110,70 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const user = await requireOwnerApi();
+    const url = new URL(request.url);
+    let id = url.searchParams.get("id")?.trim() || "";
+    if (!id) {
+      const body = await request.json().catch(() => ({}));
+      if (typeof body?.id === "string") id = body.id.trim();
+    }
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Informe a transferência que deseja estornar." },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.internalTransfer.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Transferência não encontrada." },
+        { status: 404 }
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.financialAccount.update({
+        where: { id: existing.fromAccountId },
+        data: { currentBalance: { increment: existing.amount } },
+      });
+      await tx.financialAccount.update({
+        where: { id: existing.toAccountId },
+        data: { currentBalance: { decrement: existing.amount } },
+      });
+      await tx.internalTransfer.delete({ where: { id } });
+    });
+
+    await recordAuditLog({
+      actorUserId: user.id,
+      action: "TRANSFER_REVERSED",
+      entityType: "InternalTransfer",
+      entityId: id,
+      before: {
+        fromAccountId: existing.fromAccountId,
+        toAccountId: existing.toAccountId,
+        amount: Number(existing.amount),
+        description: existing.description,
+      },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+    if (err instanceof ForbiddenError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    return NextResponse.json(
+      { error: "Erro ao estornar transferência." },
+      { status: 500 }
+    );
+  }
+}

@@ -172,6 +172,7 @@ export default async function AdminFinanceiroPage() {
         toContext: tr.toAccount.context,
         amount: toNumber(tr.amount),
         transferDate: tr.transferDate.toISOString().slice(0, 10),
+        createdAt: tr.createdAt.toISOString(),
         description: tr.description,
         transferKind: tr.transferKind,
       }))}

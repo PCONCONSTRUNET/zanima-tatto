@@ -12,9 +12,11 @@ import {
   Search,
   Send,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { formatBRL, formatDateBR } from "@/lib/format";
+import { compressImageFiles } from "@/lib/image-compress";
 import {
   QUOTE_STATUS_LABELS,
   QUOTE_STATUS_TONE,
@@ -101,12 +103,15 @@ function QuotesInner({
 
   // Novo orçamento manual
   const [clientSearch, setClientSearch] = useState("");
-  const [newClientId, setNewClientId] = useState(clients[0]?.id || "");
+  const [showAllClients, setShowAllClients] = useState(false);
+  const [newClientId, setNewClientId] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newStyle, setNewStyle] = useState<string>(TATTOO_STYLES[0]);
   const [newRegion, setNewRegion] = useState("");
   const [newSize, setNewSize] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [newReferenceFileIds, setNewReferenceFileIds] = useState<string[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
   const filteredQuotes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -246,8 +251,48 @@ function QuotesInner({
     }
   };
 
+  const handleUploadQuotePhotos = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    setUploadingPhotos(true);
+    setError(null);
+    try {
+      const remaining = Math.max(0, 4 - newReferenceFileIds.length);
+      if (remaining === 0) return;
+      const compressed = await compressImageFiles(fileList, remaining);
+      const uploadedIds: string[] = [];
+      for (const file of compressed) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("visibility", "CLIENT_OWNED");
+        if (newClientId) fd.append("clientId", newClientId);
+        const res = await fetch("/api/files", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || "Erro ao enviar foto de referência.");
+          break;
+        }
+        if (data?.file?.id) {
+          uploadedIds.push(data.file.id);
+        }
+      }
+      if (uploadedIds.length > 0) {
+        setNewReferenceFileIds((prev) => [...prev, ...uploadedIds].slice(0, 4));
+      }
+    } finally {
+      setUploadingPhotos(false);
+      e.target.value = "";
+    }
+  };
+
   const handleCreateManual = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newClientId) {
+      setError("Busque e selecione uma cliente antes de criar.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -261,6 +306,7 @@ function QuotesInner({
           bodyRegion: newRegion,
           approxSizeCm: newSize,
           ideaDescription: newDesc,
+          referenceFileIds: newReferenceFileIds,
         }),
       });
       const data = await res.json();
@@ -269,10 +315,13 @@ function QuotesInner({
         return;
       }
       setCreateOpen(false);
+      setNewClientId("");
+      setShowAllClients(false);
       setNewTitle("");
       setNewRegion("");
       setNewSize("");
       setNewDesc("");
+      setNewReferenceFileIds([]);
       setClientSearch("");
       await reload();
     } finally {
@@ -630,58 +679,90 @@ function QuotesInner({
             ) : null}
 
             <div className="space-y-2">
-              <Field label="Buscar cliente (nome ou telefone)">
-                <div className="relative">
-                  <Search className="h-3.5 w-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <Input
-                    value={clientSearch}
-                    onChange={(e) => setClientSearch(e.target.value)}
-                    placeholder="Digite nome ou WhatsApp/telefone..."
-                    className="pl-8"
-                  />
-                </div>
-              </Field>
-
-              <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-canvas)] max-h-36 overflow-y-auto divide-y divide-[var(--border-default)]">
-                {filteredClients.length === 0 ? (
-                  <p className="px-3 py-2.5 text-xs text-[var(--text-muted)]">
-                    Nenhum cliente encontrado para essa busca.
-                  </p>
-                ) : (
-                  filteredClients.map((c) => {
-                    const isSelected = c.id === newClientId;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setNewClientId(c.id)}
-                        className={`w-full px-3 py-2 text-left flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer ${
-                          isSelected
-                            ? "bg-[var(--brand-champagne-subtle)] text-[var(--text-primary)] font-semibold"
-                            : "hover:bg-[var(--bg-surface)] text-[var(--text-primary)]"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate">{c.fullName}</p>
-                          <p className="text-[11px] text-[var(--text-secondary)] tabular-nums">
-                            {c.whatsapp}
-                          </p>
-                        </div>
-                        {isSelected ? (
-                          <Check className="h-3.5 w-3.5 text-[var(--brand-champagne)] shrink-0" />
-                        ) : null}
-                      </button>
-                    );
-                  })
-                )}
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-[var(--text-secondary)]">
+                  Cliente
+                </label>
+                {clients.length > 0 && !clientSearch.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllClients((v) => !v)}
+                    className="text-[11px] font-medium text-[var(--brand-champagne)] cursor-pointer"
+                  >
+                    {showAllClients
+                      ? "Ocultar lista"
+                      : `Ver todas (${clients.length})`}
+                  </button>
+                ) : null}
               </div>
 
               {selectedClientObj ? (
-                <p className="text-[11px] text-[var(--brand-champagne)]">
-                  Selecionado: <strong>{selectedClientObj.fullName}</strong> (
-                  {selectedClientObj.whatsapp})
-                </p>
-              ) : null}
+                <div className="flex items-center justify-between gap-2 rounded-2xl border border-[var(--brand-champagne)]/50 bg-[var(--brand-champagne-subtle)]/30 px-3 py-2 text-xs">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[var(--text-primary)] truncate">
+                      {selectedClientObj.fullName}
+                    </p>
+                    <p className="text-[11px] text-[var(--text-secondary)] tabular-nums">
+                      {selectedClientObj.whatsapp}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewClientId("");
+                      setClientSearch("");
+                    }}
+                    className="text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 rounded-lg bg-[var(--bg-surface)] cursor-pointer shrink-0"
+                  >
+                    Trocar
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search className="h-3.5 w-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Input
+                      value={clientSearch}
+                      onChange={(e) => setClientSearch(e.target.value)}
+                      placeholder="Pesquise por nome ou WhatsApp/telefone..."
+                      className="pl-8"
+                    />
+                  </div>
+
+                  {clientSearch.trim().length > 0 || showAllClients ? (
+                    <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-canvas)] max-h-36 overflow-y-auto divide-y divide-[var(--border-default)]">
+                      {filteredClients.length === 0 ? (
+                        <p className="px-3 py-2.5 text-xs text-[var(--text-muted)]">
+                          Nenhum cliente encontrado para essa busca.
+                        </p>
+                      ) : (
+                        filteredClients.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setNewClientId(c.id);
+                              setShowAllClients(false);
+                            }}
+                            className="w-full px-3 py-2 text-left flex items-center justify-between gap-2 text-xs hover:bg-[var(--bg-surface)] text-[var(--text-primary)] transition-colors cursor-pointer"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{c.fullName}</p>
+                              <p className="text-[11px] text-[var(--text-secondary)] tabular-nums">
+                                {c.whatsapp}
+                              </p>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-[var(--text-muted)] px-1">
+                      Digite para pesquisar ou toque em “Ver todas” para escolher a cliente.
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             <Field label="Título da ideia">
@@ -735,15 +816,79 @@ function QuotesInner({
               />
             </Field>
 
+            <Field
+              label="Fotos de referência (opcional, até 4)"
+              hint="As imagens são comprimidas automaticamente antes do envio."
+            >
+              <div className="space-y-2">
+                {newReferenceFileIds.length < 4 ? (
+                  <label className="flex items-center justify-center gap-2 h-10 px-3 rounded-xl border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer">
+                    <Upload className="h-3.5 w-3.5" strokeWidth={1.6} />
+                    <span>
+                      {uploadingPhotos
+                        ? "Comprimindo e enviando..."
+                        : "Selecionar foto(s) de referência"}
+                    </span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleUploadQuotePhotos}
+                      disabled={uploadingPhotos}
+                    />
+                  </label>
+                ) : null}
+
+                {newReferenceFileIds.length > 0 ? (
+                  <div className="grid grid-cols-4 gap-2">
+                    {newReferenceFileIds.map((fid) => (
+                      <div
+                        key={fid}
+                        className="relative aspect-square rounded-xl overflow-hidden border border-[var(--border-default)] bg-[var(--bg-canvas)]"
+                      >
+                        <img
+                          src={`/api/files/${fid}`}
+                          alt="Referência"
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Remover foto"
+                          onClick={() =>
+                            setNewReferenceFileIds((prev) =>
+                              prev.filter((id) => id !== fid)
+                            )
+                          }
+                          className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/70 text-white inline-flex items-center justify-center cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </Field>
+
             <div className="flex justify-end gap-2 pt-2">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setCreateOpen(false)}
+                onClick={() => {
+                  setCreateOpen(false);
+                  setNewClientId("");
+                  setClientSearch("");
+                  setShowAllClients(false);
+                  setNewReferenceFileIds([]);
+                }}
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={saving || !newClientId}>
+              <Button
+                type="submit"
+                disabled={saving || uploadingPhotos || !newClientId}
+              >
                 {saving ? "Salvando..." : "Criar orçamento"}
               </Button>
             </div>

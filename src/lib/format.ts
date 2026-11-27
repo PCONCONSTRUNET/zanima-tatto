@@ -28,6 +28,10 @@ export function formatBRL(value: unknown, hide = false): string {
 
 export function formatDateBR(date: Date | string | null | undefined): string {
   if (!date) return "—";
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+    const [y, m, day] = date.trim().split("-");
+    return `${day}/${m}/${y}`;
+  }
   const d = typeof date === "string" ? new Date(date) : date;
   if (Number.isNaN(d.getTime())) return "—";
   return new Intl.DateTimeFormat(STUDIO_LOCALE, {

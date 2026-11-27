@@ -206,11 +206,13 @@ export function ProjectDetailClient({ project }: ProjectDetailProps) {
   };
 
   const handleUploadMedia = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
     setUploading(true);
     setError(null);
     try {
+      const { compressImageFile } = await import("@/lib/image-compress");
+      const file = await compressImageFile(rawFile);
       const fd = new FormData();
       fd.append("file", file);
       fd.append(

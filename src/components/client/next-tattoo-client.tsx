@@ -47,10 +47,12 @@ export function NextTattooClient({
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
     setUploading(true);
     try {
+      const { compressImageFile } = await import("@/lib/image-compress");
+      const file = await compressImageFile(rawFile);
       const fd = new FormData();
       fd.append("file", file);
       fd.append("visibility", "CLIENT_OWNED");
