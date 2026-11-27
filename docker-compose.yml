@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zanima_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zanima
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-troque_esta_senha}
+      POSTGRES_DB: zanima_tattoo
+      TZ: America/Sao_Paulo
+    volumes:
+      - zanima_pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zanima -d zanima_tattoo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zanima_web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      TZ: America/Sao_Paulo
+      PRIVATE_STORAGE_DIR: /app/storage/private
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - zanima_private_storage:/app/storage/private
+
+volumes:
+  zanima_pgdata:
+  zanima_private_storage:

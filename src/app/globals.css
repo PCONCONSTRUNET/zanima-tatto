@@ -1,0 +1,355 @@
+@import "tailwindcss";
+
+:root,
+[data-theme="light"] {
+  --bg-canvas: #F7F8FA;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #F1F2F5;
+  --bg-hover: #ECEEF2;
+  --text-primary: #18181B;
+  --text-secondary: #71717A;
+  --text-muted: #A1A1AA;
+  --border-default: #E4E4E7;
+  --border-strong: #D4D4D8;
+  --action-primary: #27272A;
+  --action-primary-hover: #18181B;
+  --action-primary-fg: #FFFFFF;
+  --brand-champagne: #A88B63;
+  --brand-champagne-subtle: #F6F2EC;
+  --status-success: #1F7A52;
+  --status-success-bg: #ECF7F1;
+  --status-warning: #A16207;
+  --status-warning-bg: #FEF7E6;
+  --status-danger: #B91C1C;
+  --status-danger-bg: #FEF0F0;
+  --status-info: #2563EB;
+  --status-info-bg: #EFF5FF;
+}
+
+[data-theme="dark"] {
+  --bg-canvas: #101114;
+  --bg-surface: #18191D;
+  --bg-subtle: #1F2127;
+  --bg-hover: #262930;
+  --text-primary: #F4F4F5;
+  --text-secondary: #A1A1AA;
+  --text-muted: #71717A;
+  --border-default: #2B2D33;
+  --border-strong: #3A3D45;
+  --action-primary: #F4F4F5;
+  --action-primary-hover: #E4E4E7;
+  --action-primary-fg: #101114;
+  --brand-champagne: #C9B18F;
+  --brand-champagne-subtle: #24201B;
+  --status-success: #34D399;
+  --status-success-bg: #132920;
+  --status-warning: #FBBF24;
+  --status-warning-bg: #2A2212;
+  --status-danger: #F87171;
+  --status-danger-bg: #2D1618;
+  --status-info: #60A5FA;
+  --status-info-bg: #142136;
+}
+
+@theme inline {
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-subtle: var(--bg-subtle);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-border: var(--border-default);
+  --color-action: var(--action-primary);
+  --color-action-fg: var(--action-primary-fg);
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-manrope), var(--font-inter), system-ui, sans-serif;
+}
+
+html {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+h1,
+h2,
+h3,
+h4,
+.font-display {
+  font-family: var(--font-manrope), var(--font-inter), system-ui, sans-serif;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mantém campos preenchidos automaticamente no padrão escuro/claro do tema */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-surface) inset;
+  box-shadow: 0 0 0 1000px var(--bg-surface) inset;
+  -webkit-text-fill-color: var(--text-primary);
+  caret-color: var(--text-primary);
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* Scrollbar sutil sem poluição visual */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+/* Animações e efeitos estilo iOS (Sheet & Modal Spring) */
+@keyframes iosBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes iosBackdropOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes iosSheetUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes iosSheetDown {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0);
+  }
+}
+
+@keyframes iosCenterIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes iosCenterOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.95);
+  }
+}
+
+.ios-backdrop-in {
+  animation: iosBackdropIn 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ios-backdrop-out {
+  animation: iosBackdropOut 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Transições controladas via data-open (garante pintura do frame inicial antes de animar) */
+.ios-bg-stage {
+  border-radius: 0px;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: brightness(1);
+  transition:
+    transform 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 420ms ease,
+    border-radius 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, filter, border-radius;
+}
+
+.ios-bg-stage[data-open="true"] {
+  border-radius: 28px;
+  transform: translate3d(0, 10px, 0) scale(0.92);
+  filter: brightness(0.65);
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ios-modal-backdrop {
+  opacity: 0;
+  transition: opacity 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ios-modal-backdrop[data-open="true"] {
+  opacity: 1;
+}
+
+.ios-modal-sheet {
+  opacity: 0;
+  transform: translate3d(0, 100%, 0);
+  transition:
+    transform 500ms cubic-bezier(0.18, 1.06, 0.32, 1),
+    opacity 280ms ease;
+  will-change: transform, opacity;
+}
+
+.ios-modal-sheet[data-open="true"] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.ios-page-enter {
+  animation: iosCenterIn 540ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes iosStepInForward {
+  from {
+    opacity: 0;
+    transform: translate3d(34px, 6px, 0) scale(0.955);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+@keyframes iosStepInBack {
+  from {
+    opacity: 0;
+    transform: translate3d(-34px, 6px, 0) scale(0.955);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+@keyframes iosStepOutForward {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0px);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(-30px, -4px, 0) scale(0.955);
+    filter: blur(4px);
+  }
+}
+
+@keyframes iosStepOutBack {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0px);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(30px, -4px, 0) scale(0.955);
+    filter: blur(4px);
+  }
+}
+
+.ios-step-enter-forward {
+  animation: iosStepInForward 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+.ios-step-enter-back {
+  animation: iosStepInBack 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+.ios-step-exit-forward {
+  animation: iosStepOutForward 280ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+}
+
+.ios-step-exit-back {
+  animation: iosStepOutBack 280ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+}
+
+@media (min-width: 640px) {
+  .ios-modal-sheet {
+    transform: translate3d(0, 32px, 0) scale(0.92);
+  }
+
+  .ios-modal-sheet[data-open="true"] {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Aplica efeito iOS de fundo fosco, tamanho enxuto e scroll interno em todos os modais */
+div.fixed.inset-0.z-50:not(.ios-modal-backdrop) {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0.75rem !important;
+  animation: iosBackdropIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+div.fixed.inset-0.z-50:not(.ios-modal-backdrop) > div,
+div.fixed.inset-0.z-50:not(.ios-modal-backdrop) > form {
+  animation: iosCenterIn 380ms cubic-bezier(0.2, 1.06, 0.32, 1) both;
+  border-radius: 26px !important;
+  max-height: 82dvh !important;
+  overflow-y: auto !important;
+  margin-top: auto !important;
+  margin-bottom: auto !important;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  div.fixed.inset-0.z-50:not(.ios-modal-backdrop) {
+    padding: 1.5rem !important;
+  }
+
+  div.fixed.inset-0.z-50:not(.ios-modal-backdrop) > div,
+  div.fixed.inset-0.z-50:not(.ios-modal-backdrop) > form {
+    max-height: 88dvh !important;
+    border-radius: 24px !important;
+  }
+}
