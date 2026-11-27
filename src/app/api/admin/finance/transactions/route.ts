@@ -20,7 +20,8 @@ const createTxSchema = z.object({
   competenceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   status: z.enum(["PAID", "RECEIVED", "PENDING", "OVERDUE", "CANCELLED"]),
-  categoryId: z.string().min(1, "Selecione uma categoria."),
+  categoryId: z.string().optional().nullable(),
+  customCategoryName: z.string().trim().max(80).optional().nullable(),
   accountId: z.string().optional().nullable(),
   creditCardId: z.string().optional().nullable(),
   paymentMethod: z.enum([
@@ -36,7 +37,10 @@ const createTxSchema = z.object({
   appointmentId: z.string().optional().nullable(),
   attachmentFileId: z.string().optional().nullable(),
   notes: z.string().trim().optional(),
-});
+}).refine(
+  (d) => Boolean(d.categoryId?.trim() || d.customCategoryName?.trim()),
+  { message: "Selecione ou digite uma categoria." }
+);
 
 function addMonthsISODate(dateStr: string, monthsToAdd: number): Date {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -107,6 +111,40 @@ export async function POST(request: Request) {
 
     const d = parsed.data;
     assertFinancialContextAccess(user, d.context);
+
+    let resolvedCategoryId = d.categoryId?.trim() || "";
+    const typedCatName = d.customCategoryName?.trim() || "";
+    if (typedCatName) {
+      const existingCat = await prisma.financialCategory.findFirst({
+        where: {
+          ownerUserId: user.id,
+          context: d.context,
+          kind: d.type,
+          name: { equals: typedCatName, mode: "insensitive" },
+        },
+        select: { id: true },
+      });
+      if (existingCat) {
+        resolvedCategoryId = existingCat.id;
+      } else {
+        const createdCat = await prisma.financialCategory.create({
+          data: {
+            ownerUserId: user.id,
+            context: d.context,
+            kind: d.type,
+            name: typedCatName,
+          },
+          select: { id: true },
+        });
+        resolvedCategoryId = createdCat.id;
+      }
+    }
+    if (!resolvedCategoryId) {
+      return NextResponse.json(
+        { error: "Selecione ou digite uma categoria." },
+        { status: 400 }
+      );
+    }
 
     // Garante coerência entre tipo e status liquidado
     const normalizedStatus =
@@ -203,7 +241,7 @@ export async function POST(request: Request) {
             dueDate,
             paidAt: isSettled ? new Date() : null,
             status: entryStatus,
-            categoryId: d.categoryId,
+            categoryId: resolvedCategoryId,
             accountId: d.accountId || null,
             creditCardId: d.creditCardId || null,
             paymentMethod: d.paymentMethod,

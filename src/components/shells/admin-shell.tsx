@@ -12,7 +12,6 @@ import {
   Eye,
   EyeOff,
   FolderKanban,
-  Gift,
   Globe,
   Home,
   LayoutGrid,
@@ -93,12 +92,6 @@ const SIDEBAR_GROUPS = [
         href: "/admin/estoque",
         label: "Estoque",
         icon: Package,
-        exact: false,
-      },
-      {
-        href: "/admin/fidelizacao",
-        label: "Fidelização",
-        icon: Gift,
         exact: false,
       },
       {

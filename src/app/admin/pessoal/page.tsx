@@ -113,6 +113,7 @@ export default async function AdminPessoalPage() {
         amount: toNumber(t.amount),
         competenceDate: t.competenceDate.toISOString().slice(0, 10),
         dueDate: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : null,
+        createdAt: t.createdAt.toISOString(),
         status: t.status,
         categoryId: t.categoryId,
         categoryName: t.category.name,

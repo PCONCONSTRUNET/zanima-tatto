@@ -193,3 +193,54 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    await requireAdminApi("stock");
+
+    const url = new URL(request.url);
+    let id = url.searchParams.get("id")?.trim() || "";
+    if (!id) {
+      const body = await request.json().catch(() => ({}));
+      if (typeof body?.id === "string") {
+        id = body.id.trim();
+      }
+    }
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Informe o material que deseja excluir." },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.stockItem.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Material não encontrado." },
+        { status: 404 }
+      );
+    }
+
+    await prisma.$transaction([
+      prisma.stockMovement.deleteMany({ where: { stockItemId: id } }),
+      prisma.stockItem.delete({ where: { id } }),
+    ]);
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+    if (err instanceof ForbiddenError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    return NextResponse.json(
+      { error: "Erro ao excluir material de estoque." },
+      { status: 500 }
+    );
+  }
+}

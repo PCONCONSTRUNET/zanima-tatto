@@ -3,7 +3,6 @@ import {
   Bell,
   BellRing,
   FolderKanban,
-  Gift,
   Globe,
   Package,
   Receipt,
@@ -62,14 +61,8 @@ const CATEGORIES = [
     ],
   },
   {
-    title: "Relacionamento e Fidelização",
+    title: "Relacionamento e Sistema",
     items: [
-      {
-        href: "/admin/fidelizacao",
-        label: "Fidelização e Desenhos",
-        description: "Cupons, indicações, vale-presente, flashes e lista de espera",
-        icon: Gift,
-      },
       {
         href: "/admin/push",
         label: "Notificações Push",

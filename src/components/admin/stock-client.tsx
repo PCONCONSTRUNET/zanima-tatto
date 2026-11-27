@@ -2,10 +2,20 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowDown, ArrowUp, Package, Plus } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  Package,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { formatBRL, formatDateBR, formatDateTimeBR } from "@/lib/format";
 import {
   Button,
+  ConfirmModal,
   CurrencyInput,
   DecimalInput,
   EmptyState,
@@ -59,13 +69,19 @@ export function StockClient({
   // Item
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Cartuchos e Agulhas");
+  const [customCategory, setCustomCategory] = useState("");
   const [unit, setUnit] = useState("un");
-  const [currentQty, setCurrentQty] = useState("0");
-  const [minQty, setMinQty] = useState("5");
-  const [unitCost, setUnitCost] = useState("0");
+  const [currentQty, setCurrentQty] = useState("1");
+  const [minQty, setMinQty] = useState("0");
+  const [unitCost, setUnitCost] = useState("");
   const [batchCode, setBatchCode] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [supplierId, setSupplierId] = useState("");
+  const [showMoreItemFields, setShowMoreItemFields] = useState(false);
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<StockItemRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Supplier
   const [supName, setSupName] = useState("");
@@ -82,34 +98,74 @@ export function StockClient({
 
   const lowStockCount = items.filter((i) => i.currentQty <= i.minQty).length;
 
+  const resetItemForm = () => {
+    setName("");
+    setCategory("Cartuchos e Agulhas");
+    setCustomCategory("");
+    setUnit("un");
+    setCurrentQty("1");
+    setMinQty("0");
+    setUnitCost("");
+    setBatchCode("");
+    setExpiresAt("");
+    setSupplierId("");
+    setShowMoreItemFields(false);
+    setError(null);
+  };
+
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError(null);
+    const resolvedCategory =
+      category === "__custom__"
+        ? customCategory.trim() || "Outros"
+        : category;
     try {
       const res = await fetch("/api/admin/stock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entity: "item",
-          name,
-          category,
-          unit,
+          name: name.trim(),
+          category: resolvedCategory,
+          unit: unit.trim() || "un",
           currentQty: Number(currentQty || 0),
           minQty: Number(minQty || 0),
           unitCost: Number(unitCost || 0),
-          batchCode: batchCode || undefined,
+          batchCode: batchCode.trim() || undefined,
           expiresAt: expiresAt || undefined,
           supplierId: supplierId || null,
         }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data?.error || "Não foi possível salvar o material.");
+        return;
+      }
+      setItemModal(false);
+      resetItemForm();
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteItem = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/admin/stock", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: deleteTarget.id }),
+      });
       if (res.ok) {
-        setItemModal(false);
-        setName("");
+        setDeleteTarget(null);
         router.refresh();
       }
     } finally {
-      setSaving(false);
+      setDeleting(false);
     }
   };
 
@@ -255,11 +311,20 @@ export function StockClient({
                   <div className="md:col-span-2 tabular-nums">
                     {formatBRL(item.unitCost)}
                   </div>
-                  <div className="md:col-span-2 flex md:justify-end">
+                  <div className="md:col-span-2 flex items-center justify-between md:justify-end gap-2">
                     <StatusBadge
                       label={isLow ? "Reposição necessária" : "Normal"}
                       tone={isLow ? "warning" : "success"}
                     />
+                    <button
+                      type="button"
+                      aria-label={`Excluir ${item.name}`}
+                      title="Excluir material"
+                      onClick={() => setDeleteTarget(item)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-[var(--text-muted)] hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </li>
               );
@@ -307,36 +372,97 @@ export function StockClient({
         </section>
       ) : null}
 
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Excluir material do estoque"
+        description={
+          deleteTarget
+            ? `Tem certeza que deseja excluir "${deleteTarget.name}"? O saldo e o histórico de movimentações desse item serão removidos.`
+            : ""
+        }
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        danger
+        loading={deleting}
+        onConfirm={handleDeleteItem}
+        onCancel={() => !deleting && setDeleteTarget(null)}
+      />
+
       {/* Modal Novo Material */}
       {itemModal ? (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-xs p-0 md:p-4">
           <form
             onSubmit={handleCreateItem}
-            className="w-full max-h-[88dvh] md:max-w-lg bg-[var(--bg-surface)] border-t md:border border-[var(--border-strong)]/70 rounded-t-[28px] md:rounded-3xl p-5 space-y-3.5 overflow-y-auto shadow-2xl"
+            className="w-full max-h-[88dvh] md:max-w-md bg-[var(--bg-surface)] border-t md:border border-[var(--border-strong)]/70 rounded-t-[28px] md:rounded-3xl p-5 space-y-4 overflow-y-auto shadow-2xl"
           >
-            <h3 className="font-display text-base font-semibold">
-              Novo material de estoque
-            </h3>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base font-semibold">
+                  Novo material
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Informe o básico para adicionar ao estoque.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar modal"
+                onClick={() => {
+                  setItemModal(false);
+                  resetItemForm();
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {error ? (
+              <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                {error}
+              </p>
+            ) : null}
+
             <Field label="Nome do material">
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Cartucho 3RL Fine Line"
+                placeholder="Ex: Cartucho 3RL, Luva preta M"
                 required
               />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Categoria">
-                <Select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                >
-                  <option value="Cartuchos e Agulhas">Cartuchos e Agulhas</option>
-                  <option value="Tintas">Tintas</option>
-                  <option value="Luvas e Descartáveis">Luvas e Descartáveis</option>
-                  <option value="Higienização e Biossegurança">Higienização</option>
-                  <option value="Pós-Tatuagem">Pós-Tatuagem</option>
-                </Select>
+
+            <Field label="Categoria">
+              <Select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                <option value="Cartuchos e Agulhas">Cartuchos e Agulhas</option>
+                <option value="Tintas">Tintas</option>
+                <option value="Luvas e Descartáveis">Luvas e Descartáveis</option>
+                <option value="Higienização e Biossegurança">Higienização</option>
+                <option value="Pós-Tatuagem">Pós-Tatuagem</option>
+                <option value="__custom__">+ Digitar outra categoria...</option>
+              </Select>
+            </Field>
+
+            {category === "__custom__" ? (
+              <Field label="Nova categoria">
+                <Input
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="Ex: Batoques, Papel toalha..."
+                  required
+                />
+              </Field>
+            ) : null}
+
+            <div className="grid grid-cols-3 gap-2.5">
+              <Field label="Quantidade">
+                <DecimalInput
+                  value={currentQty}
+                  onValueChange={setCurrentQty}
+                />
               </Field>
               <Field label="Unidade">
                 <Input
@@ -346,20 +472,6 @@ export function StockClient({
                   required
                 />
               </Field>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Qtd. inicial">
-                <DecimalInput
-                  value={currentQty}
-                  onValueChange={setCurrentQty}
-                />
-              </Field>
-              <Field label="Estoque mín.">
-                <DecimalInput
-                  value={minQty}
-                  onValueChange={setMinQty}
-                />
-              </Field>
               <Field label="Custo unit.">
                 <CurrencyInput
                   value={unitCost}
@@ -367,39 +479,70 @@ export function StockClient({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Lote">
-                <Input
-                  value={batchCode}
-                  onChange={(e) => setBatchCode(e.target.value)}
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowMoreItemFields((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${
+                    showMoreItemFields ? "rotate-180" : ""
+                  }`}
                 />
-              </Field>
-              <Field label="Validade">
-                <Input
-                  type="date"
-                  value={expiresAt}
-                  onChange={(e) => setExpiresAt(e.target.value)}
-                />
-              </Field>
-              <Field label="Fornecedor">
-                <Select
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                >
-                  <option value="">Opcional</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+                {showMoreItemFields
+                  ? "Ocultar detalhes opcionais"
+                  : "Mais detalhes (mínimo, lote, validade)"}
+              </button>
+
+              {showMoreItemFields ? (
+                <div className="mt-3 grid grid-cols-2 gap-3 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-subtle)]/50 p-3">
+                  <Field label="Estoque mínimo">
+                    <DecimalInput
+                      value={minQty}
+                      onValueChange={setMinQty}
+                    />
+                  </Field>
+                  <Field label="Lote">
+                    <Input
+                      value={batchCode}
+                      onChange={(e) => setBatchCode(e.target.value)}
+                      placeholder="Opcional"
+                    />
+                  </Field>
+                  <Field label="Validade">
+                    <Input
+                      type="date"
+                      value={expiresAt}
+                      onChange={(e) => setExpiresAt(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Fornecedor">
+                    <Select
+                      value={supplierId}
+                      onChange={(e) => setSupplierId(e.target.value)}
+                    >
+                      <option value="">Opcional</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              ) : null}
             </div>
-            <div className="flex justify-end gap-2">
+
+            <div className="flex justify-end gap-2 pt-1">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setItemModal(false)}
+                onClick={() => {
+                  setItemModal(false);
+                  resetItemForm();
+                }}
               >
                 Cancelar
               </Button>
