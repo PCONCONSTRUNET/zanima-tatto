@@ -9,10 +9,15 @@ import {
   Field,
   Input,
 } from "@/components/ui/primitives";
+import { PushOptInButton } from "@/components/ui/push-opt-in-button";
 
 export function ClientProfileClient({
+  userId,
+  role,
   initial,
 }: {
+  userId: string;
+  role: string;
   initial: {
     fullName: string;
     email: string;
@@ -228,6 +233,18 @@ export function ClientProfileClient({
           {saving ? "Salvando..." : "Salvar perfil"}
         </button>
       </form>
+
+      <section className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-3xl p-4 sm:p-5 space-y-3">
+        <div className="space-y-0.5">
+          <h2 className="font-display text-sm font-semibold">
+            Notificações Push no aparelho
+          </h2>
+          <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+            Ative ou desative avisos Push neste dispositivo sobre confirmações de horário, pagamentos e lembretes.
+          </p>
+        </div>
+        <PushOptInButton userId={userId} role={role} />
+      </section>
 
       <section className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-3xl p-4 sm:p-5 space-y-3">
         <div className="space-y-0.5">

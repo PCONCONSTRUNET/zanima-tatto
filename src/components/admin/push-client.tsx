@@ -354,10 +354,10 @@ export function PushAdminClient({
         <div className="pt-3 border-t border-[var(--border-default)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="text-xs text-[var(--text-secondary)]">
             <p className="font-medium text-[var(--text-primary)]">
-              Ativar recebimento Push neste aparelho (Admin)
+              Ativar ou desativar Push neste aparelho (Admin)
             </p>
             <p>
-              Permite receber avisos instantâneos quando clientes agendarem, confirmarem Pix ou cancelarem.
+              Receba avisos instantâneos quando clientes agendarem, confirmarem Pix, faltarem ou cancelarem.
             </p>
           </div>
           <PushOptInButton

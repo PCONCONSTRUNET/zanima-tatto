@@ -42,6 +42,7 @@ import {
 import { useTheme } from "@/components/theme-provider";
 import { OneSignalUserSync } from "@/components/onesignal-init";
 import { PushOptInButton } from "@/components/ui/push-opt-in-button";
+import { PushPromptModal } from "@/components/ui/push-prompt-modal";
 import type { SafeSessionUser } from "@/lib/security/session";
 
 const PRIMARY_MOBILE_HREFS = [
@@ -310,6 +311,7 @@ export function AdminShell({
   return (
     <div className="min-h-dvh flex bg-[var(--bg-canvas)] text-[var(--text-primary)]">
       <OneSignalUserSync userId={user.id} role={user.role} />
+      <PushPromptModal userId={user.id} role={user.role} />
       {/* Sidebar Desktop Fixa e Recolhível */}
       <aside
         className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-[var(--bg-surface)] border-r border-[var(--border-default)] transition-[width] duration-200 ${

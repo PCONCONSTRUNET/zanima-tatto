@@ -14,6 +14,8 @@ export default async function ClientPerfilPage() {
 
   return (
     <ClientProfileClient
+      userId={user.id}
+      role={user.role}
       initial={{
         fullName: client?.fullName || user.name,
         email: client?.email || user.email,

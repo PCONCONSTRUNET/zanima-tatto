@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Bell, BellRing, CheckCircle2, Smartphone } from "lucide-react";
+import { Bell, BellOff, BellRing, CheckCircle2, Smartphone } from "lucide-react";
 import { getOneSignalClient } from "@/components/onesignal-init";
 
 export function PushOptInButton({
@@ -79,7 +79,7 @@ export function PushOptInButton({
     };
   }, []);
 
-  const handleActivate = async () => {
+  const handleToggle = async () => {
     if (needsIosPwaInstall) {
       setFeedback(
         "No iPhone/iPad, toque em Compartilhar > Adicionar à Tela de Início e abra pelo ícone para ativar Push."
@@ -90,6 +90,14 @@ export function PushOptInButton({
     setFeedback(null);
     try {
       const OneSignal = await getOneSignalClient();
+
+      if (optedIn) {
+        await OneSignal.User.PushSubscription.optOut();
+        setOptedIn(false);
+        setFeedback("Notificações Push desativadas neste aparelho.");
+        return;
+      }
+
       await OneSignal.Notifications.requestPermission();
       if (Notification.permission === "granted") {
         await OneSignal.User.PushSubscription.optIn();
@@ -105,7 +113,7 @@ export function PushOptInButton({
         }
         setOptedIn(true);
         setDenied(false);
-        setFeedback("Push ativado neste dispositivo!");
+        setFeedback("Notificações Push ativadas neste aparelho!");
       } else {
         setDenied(Notification.permission === "denied");
         setFeedback(
@@ -115,7 +123,7 @@ export function PushOptInButton({
         );
       }
     } catch {
-      setFeedback("Não foi possível ativar neste navegador.");
+      setFeedback("Não foi possível atualizar a permissão neste navegador.");
     } finally {
       setBusy(false);
     }
@@ -127,11 +135,11 @@ export function PushOptInButton({
     return (
       <button
         type="button"
-        onClick={handleActivate}
+        onClick={handleToggle}
         disabled={busy}
         title={
           optedIn
-            ? "Notificações Push ativas neste dispositivo"
+            ? "Push ativo neste aparelho (toque para desativar)"
             : "Ativar notificações Push"
         }
         className={`h-9 px-3 inline-flex items-center gap-1.5 rounded-full border text-xs font-medium transition-all active:scale-[0.95] cursor-pointer ${
@@ -145,42 +153,54 @@ export function PushOptInButton({
         ) : (
           <BellRing className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
         )}
-        <span>{busy ? "Ativando..." : optedIn ? "Push ativo" : "Ativar Push"}</span>
+        <span>{busy ? "Aguarde..." : optedIn ? "Push ativo" : "Ativar Push"}</span>
       </button>
     );
   }
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <button
-        type="button"
-        onClick={handleActivate}
-        disabled={busy}
-        className={`h-10 px-4 inline-flex items-center justify-center gap-2 rounded-full text-xs font-semibold transition-all active:scale-[0.97] cursor-pointer ${
-          optedIn
-            ? "bg-[var(--status-success-bg)] text-[var(--status-success)] border border-[var(--status-success)]/30"
-            : "bg-[var(--action-primary)] text-[var(--action-primary-fg)] hover:bg-[var(--action-primary-hover)]"
-        }`}
-      >
-        {needsIosPwaInstall ? (
-          <Smartphone className="h-4 w-4 shrink-0" strokeWidth={1.7} />
-        ) : optedIn ? (
-          <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={1.7} />
+      <div className="flex flex-wrap items-center gap-2">
+        {optedIn ? (
+          <>
+            <span className="h-10 px-3.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--status-success-bg)] text-[var(--status-success)] border border-[var(--status-success)]/30 text-xs font-semibold">
+              <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={1.7} />
+              Push ativo neste aparelho
+            </span>
+            <button
+              type="button"
+              onClick={handleToggle}
+              disabled={busy}
+              className="h-10 px-4 inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--status-danger)]/30 bg-[var(--status-danger-bg)] text-[var(--status-danger)] text-xs font-semibold transition-all active:scale-[0.97] cursor-pointer disabled:opacity-50"
+            >
+              <BellOff className="h-3.5 w-3.5 shrink-0" strokeWidth={1.7} />
+              {busy ? "Desativando..." : "Desativar notificações"}
+            </button>
+          </>
         ) : (
-          <Bell className="h-4 w-4 shrink-0" strokeWidth={1.7} />
+          <button
+            type="button"
+            onClick={handleToggle}
+            disabled={busy}
+            className="h-10 px-4 inline-flex items-center justify-center gap-2 rounded-full bg-[var(--action-primary)] text-[var(--action-primary-fg)] hover:bg-[var(--action-primary-hover)] text-xs font-semibold transition-all active:scale-[0.97] cursor-pointer disabled:opacity-50"
+          >
+            {needsIosPwaInstall ? (
+              <Smartphone className="h-4 w-4 shrink-0" strokeWidth={1.7} />
+            ) : (
+              <Bell className="h-4 w-4 shrink-0" strokeWidth={1.7} />
+            )}
+            <span>
+              {busy
+                ? "Ativando..."
+                : needsIosPwaInstall
+                  ? "Instalar PWA para Push no iPhone"
+                  : denied
+                    ? "Push bloqueado no navegador"
+                    : "Ativar notificações Push"}
+            </span>
+          </button>
         )}
-        <span>
-          {busy
-            ? "Ativando..."
-            : needsIosPwaInstall
-              ? "Instalar PWA para Push no iPhone"
-              : optedIn
-                ? "Push ativo neste aparelho"
-                : denied
-                  ? "Push bloqueado no navegador"
-                  : "Ativar notificações Push neste aparelho"}
-        </span>
-      </button>
+      </div>
       {feedback ? (
         <p className="text-[11px] text-[var(--text-secondary)]">{feedback}</p>
       ) : null}

@@ -58,6 +58,9 @@ export function SignupForm({
         setLoading(false);
         return;
       }
+      try {
+        sessionStorage.setItem("zanima-prompt-push", "1");
+      } catch {}
       onSuccess?.();
       router.push(data.redirectTo || "/minha-conta");
       router.refresh();
@@ -203,6 +206,9 @@ export function LoginForm({
       if (data.user?.themePreference) {
         setTheme(data.user.themePreference === "DARK" ? "dark" : "light", false);
       }
+      try {
+        sessionStorage.setItem("zanima-prompt-push", "1");
+      } catch {}
       onSuccess?.();
       router.push(data.redirectTo || "/");
       router.refresh();
