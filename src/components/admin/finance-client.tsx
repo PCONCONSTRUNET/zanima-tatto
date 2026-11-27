@@ -492,10 +492,14 @@ function FinanceInner({
 
   const pendingAppointments = useMemo(
     () =>
-      filteredAppointments.filter(
+      studioAppointments.filter(
         (a) => a.priceEstimate > 0 && a.priceEstimate - a.receivedAmount > 0.01
       ),
-    [filteredAppointments]
+    [studioAppointments]
+  );
+
+  const [apptSubView, setApptSubView] = useState<"pending" | "period">(
+    "pending"
   );
 
   const metrics = useMemo(() => {
@@ -545,7 +549,7 @@ function FinanceInner({
       )
       .reduce((acc, t) => acc + t.amount, 0);
 
-    const appointmentsPending = filteredAppointments.reduce(
+    const appointmentsPending = pendingAppointments.reduce(
       (acc, a) => acc + Math.max(0, a.priceEstimate - a.receivedAmount),
       0
     );
@@ -590,7 +594,7 @@ function FinanceInner({
     periodTransfers,
     fixedContext,
     isStudio,
-    filteredAppointments,
+    pendingAppointments,
     initialAccounts,
   ]);
 
@@ -1421,22 +1425,25 @@ function FinanceInner({
         </section>
       ) : null}
 
-      {/* Alerta Prático: Agendamentos com valor pendente (Estúdio) */}
+      {/* Alerta Prático: Clientes devendo / Em aberto (todos os períodos) */}
       {isStudio && pendingAppointments.length > 0 && mainView === "extrato" ? (
         <section className="rounded-2xl bg-[var(--brand-champagne-subtle)]/70 border border-[var(--brand-champagne)]/35 p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
               <p className="text-xs font-semibold text-[var(--text-primary)]">
-                Receber de agendamentos ({pendingAppointments.length})
+                Clientes devendo / Em aberto ({pendingAppointments.length})
               </p>
               <p className="text-[11px] text-[var(--text-secondary)] tabular-nums">
-                Total em aberto:{" "}
+                Total a receber (todos os períodos):{" "}
                 {formatBRL(metrics.appointmentsPending, hideValues)}
               </p>
             </div>
             <button
               type="button"
-              onClick={() => setMainView("agendamentos")}
+              onClick={() => {
+                setApptSubView("pending");
+                setMainView("agendamentos");
+              }}
               className="text-xs font-semibold text-[var(--brand-champagne)] cursor-pointer"
             >
               Ver todos ›
@@ -1459,7 +1466,9 @@ function FinanceInner({
                       {appt.clientName}
                     </p>
                     <p className="text-[11px] text-[var(--text-secondary)] truncate tabular-nums">
-                      {appt.title} • {formatDateBR(appt.startAt)}
+                      {formatDateBR(appt.startAt)} • {appt.title} • Pago{" "}
+                      {formatBRL(appt.receivedAmount, hideValues)} de{" "}
+                      {formatBRL(appt.priceEstimate, hideValues)}
                     </p>
                   </div>
 
@@ -1961,111 +1970,168 @@ function FinanceInner({
 
       {/* VISÃO 2: GRANA DOS AGENDAMENTOS (Estúdio) */}
       {isStudio && mainView === "agendamentos" ? (
-        filteredAppointments.length === 0 ? (
-          <div className="rounded-[24px] bg-[var(--bg-surface)] border border-[var(--border-default)] p-6">
-            <EmptyState
-              icon={<Calendar className="h-5 w-5" strokeWidth={1.5} />}
-              title="Nenhum agendamento no período"
-              description="Quando houver sessões marcadas na Agenda, você acompanha os pagamentos aqui."
-            />
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setApptSubView("pending")}
+              className={`h-8 px-3.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                apptSubView === "pending"
+                  ? "bg-[var(--brand-champagne-subtle)] text-[var(--brand-champagne)] border border-[var(--brand-champagne)]/40 font-semibold"
+                  : "bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-secondary)]"
+              }`}
+            >
+              Clientes devendo ({pendingAppointments.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setApptSubView("period")}
+              className={`h-8 px-3.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                apptSubView === "period"
+                  ? "bg-[var(--brand-champagne-subtle)] text-[var(--brand-champagne)] border border-[var(--brand-champagne)]/40 font-semibold"
+                  : "bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-secondary)]"
+              }`}
+            >
+              Do período ({filteredAppointments.length})
+            </button>
           </div>
-        ) : (
-          <div className="rounded-[24px] bg-[var(--bg-surface)] border border-[var(--border-default)] divide-y divide-[var(--border-default)] overflow-hidden">
-            {filteredAppointments.map((appt) => {
-              const remaining = Math.max(
-                0,
-                appt.priceEstimate - appt.receivedAmount
-              );
-              const isPaidInFull =
-                appt.priceEstimate > 0 && remaining <= 0.01;
 
+          {(() => {
+            const visibleAppointments =
+              apptSubView === "pending"
+                ? pendingAppointments
+                : filteredAppointments;
+
+            if (visibleAppointments.length === 0) {
               return (
-                <div
-                  key={appt.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-semibold tabular-nums text-[var(--brand-champagne)]">
-                        {formatDateBR(appt.startAt)} •{" "}
-                        {formatTimeBR(appt.startAt)}
-                      </span>
-                      <StatusBadge
-                        label={
-                          APPOINTMENT_STATUS_LABELS[appt.status] || appt.status
-                        }
-                        tone={APPOINTMENT_STATUS_TONE[appt.status] || "neutral"}
-                      />
-                    </div>
-                    <Link
-                      href={`/admin/clientes/${appt.clientId}`}
-                      className="text-sm font-semibold text-[var(--text-primary)] hover:underline block truncate"
-                    >
-                      {appt.clientName}
-                    </Link>
-                    <p className="text-xs text-[var(--text-secondary)] truncate flex items-center gap-1.5">
-                      <span className="truncate">{appt.title} •</span>
-                      <span className="inline-flex items-center gap-1 shrink-0">
-                        <PaymentMethodIcon
-                          method={appt.preferredPaymentMethod}
-                          size={13}
-                        />
-                        {PAYMENT_METHOD_LABELS[appt.preferredPaymentMethod] ||
-                          appt.preferredPaymentMethod}
-                      </span>
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between sm:justify-end gap-3">
-                    <div className="text-left sm:text-right text-xs tabular-nums">
-                      <p className="font-semibold text-[var(--text-primary)]">
-                        {appt.priceEstimate > 0
-                          ? formatBRL(appt.priceEstimate, hideValues)
-                          : "Sem valor"}
-                      </p>
-                      <p className="text-[11px] text-[var(--text-secondary)]">
-                        Pago: {formatBRL(appt.receivedAmount, hideValues)}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={`/api/admin/appointments/${appt.id}/receipt`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="h-9 px-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--bg-canvas)] border border-[var(--border-default)] text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] shrink-0"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        <span>Comprovante</span>
-                      </a>
-
-                      {isPaidInFull ? (
-                        <StatusBadge label="Quitado" tone="success" />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openNewTxModal("INCOME", {
-                              appointmentId: appt.id,
-                              description: `${appt.title} — ${appt.clientName}`,
-                              amount:
-                                remaining > 0 ? remaining : appt.depositRequired,
-                              paymentMethod: appt.preferredPaymentMethod,
-                            })
-                          }
-                          className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--action-primary)] text-[var(--action-primary-fg)] text-xs font-semibold cursor-pointer shrink-0"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          <span>Receber</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                <div className="rounded-[24px] bg-[var(--bg-surface)] border border-[var(--border-default)] p-6">
+                  <EmptyState
+                    icon={<Calendar className="h-5 w-5" strokeWidth={1.5} />}
+                    title={
+                      apptSubView === "pending"
+                        ? "Nenhum saldo em aberto"
+                        : "Nenhum agendamento no período"
+                    }
+                    description={
+                      apptSubView === "pending"
+                        ? "Todas as sessões com valor definido já foram quitadas."
+                        : "Quando houver sessões marcadas na Agenda, você acompanha os pagamentos aqui."
+                    }
+                  />
                 </div>
               );
-            })}
-          </div>
-        )
+            }
+
+            return (
+              <div className="rounded-[24px] bg-[var(--bg-surface)] border border-[var(--border-default)] divide-y divide-[var(--border-default)] overflow-hidden">
+                {visibleAppointments.map((appt) => {
+                  const remaining = Math.max(
+                    0,
+                    appt.priceEstimate - appt.receivedAmount
+                  );
+                  const isPaidInFull =
+                    appt.priceEstimate > 0 && remaining <= 0.01;
+
+                  return (
+                    <div
+                      key={appt.id}
+                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold tabular-nums text-[var(--brand-champagne)]">
+                            {formatDateBR(appt.startAt)} •{" "}
+                            {formatTimeBR(appt.startAt)}
+                          </span>
+                          <StatusBadge
+                            label={
+                              APPOINTMENT_STATUS_LABELS[appt.status] ||
+                              appt.status
+                            }
+                            tone={
+                              APPOINTMENT_STATUS_TONE[appt.status] || "neutral"
+                            }
+                          />
+                        </div>
+                        <Link
+                          href={`/admin/clientes/${appt.clientId}`}
+                          className="text-sm font-semibold text-[var(--text-primary)] hover:underline block truncate"
+                        >
+                          {appt.clientName}
+                        </Link>
+                        <p className="text-xs text-[var(--text-secondary)] truncate flex items-center gap-1.5">
+                          <span className="truncate">{appt.title} •</span>
+                          <span className="inline-flex items-center gap-1 shrink-0">
+                            <PaymentMethodIcon
+                              method={appt.preferredPaymentMethod}
+                              size={13}
+                            />
+                            {PAYMENT_METHOD_LABELS[
+                              appt.preferredPaymentMethod
+                            ] || appt.preferredPaymentMethod}
+                          </span>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-3">
+                        <div className="text-left sm:text-right text-xs tabular-nums">
+                          <p className="font-semibold text-[var(--text-primary)]">
+                            {appt.priceEstimate > 0
+                              ? formatBRL(appt.priceEstimate, hideValues)
+                              : "Sem valor"}
+                          </p>
+                          <p className="text-[11px] text-[var(--text-secondary)]">
+                            Pago: {formatBRL(appt.receivedAmount, hideValues)}
+                          </p>
+                          {remaining > 0.01 ? (
+                            <p className="text-[11px] font-semibold text-[var(--status-warning)]">
+                              Falta: {formatBRL(remaining, hideValues)}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={`/api/admin/appointments/${appt.id}/receipt`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="h-9 px-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--bg-canvas)] border border-[var(--border-default)] text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] shrink-0"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            <span>Comprovante</span>
+                          </a>
+
+                          {isPaidInFull ? (
+                            <StatusBadge label="Quitado" tone="success" />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openNewTxModal("INCOME", {
+                                  appointmentId: appt.id,
+                                  description: `${appt.title} — ${appt.clientName}`,
+                                  amount:
+                                    remaining > 0
+                                      ? remaining
+                                      : appt.depositRequired,
+                                  paymentMethod: appt.preferredPaymentMethod,
+                                })
+                              }
+                              className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--action-primary)] text-[var(--action-primary-fg)] text-xs font-semibold cursor-pointer shrink-0"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              <span>Receber</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
       ) : null}
 
       {/* VISÃO 3: GERENCIAR (Contas, Cartões, Metas, Categorias, Retiradas, Relatórios) */}

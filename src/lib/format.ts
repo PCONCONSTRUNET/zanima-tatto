@@ -103,6 +103,30 @@ export function toISODateSP(date: Date = new Date()): string {
   return `${map.year}-${map.month}-${map.day}`;
 }
 
+export function computeAppointmentPaidAmount(
+  payments: Array<{ amount: unknown; status: string }> = [],
+  financialTransactions: Array<{
+    amount: unknown;
+    status: string;
+    paymentId?: string | null;
+  }> = []
+): number {
+  const confirmedPayments = payments
+    .filter((p) => p.status === "CONFIRMED")
+    .reduce((acc, p) => acc + toNumber(p.amount), 0);
+
+  // Evita contagem dupla: transações com paymentId já estão contabilizadas em payments
+  const manualTransactions = financialTransactions
+    .filter(
+      (tx) =>
+        !tx.paymentId &&
+        (tx.status === "RECEIVED" || tx.status === "PAID")
+    )
+    .reduce((acc, tx) => acc + toNumber(tx.amount), 0);
+
+  return Math.round((confirmedPayments + manualTransactions) * 100) / 100;
+}
+
 export function parseSPDateTime(dateStr: string, timeStr: string): Date {
   // Constrói instante exato no fuso America/Sao_Paulo (-03:00 padrão vigente no Brasil)
   const cleanDate = dateStr.slice(0, 10);

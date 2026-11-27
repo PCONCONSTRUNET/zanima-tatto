@@ -7,7 +7,7 @@ import {
   requireAdminApi,
   UnauthorizedError,
 } from "@/lib/security/rbac";
-import { toNumber } from "@/lib/format";
+import { toISODateSP, toNumber } from "@/lib/format";
 import { dispatchNotification, dispatchPushEvent } from "@/lib/notifications";
 import { recordAuditLog } from "@/lib/security/audit";
 
@@ -19,6 +19,10 @@ const registerPaymentSchema = z.object({
   kind: z.enum(["DEPOSIT", "PARTIAL", "FULL"]),
   method: z.enum(["PIX", "CREDIT_CARD", "DEBIT_CARD", "CASH", "BANK_TRANSFER"]),
   amount: z.number().positive("O valor deve ser maior que zero."),
+  paymentDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   status: z.enum(["PENDING", "CONFIRMED"]).default("CONFIRMED"),
   idempotencyKey: z.string().optional(),
   notes: z.string().trim().optional(),
@@ -105,6 +109,8 @@ export async function POST(request: Request) {
 
       if (category) {
         const isConfirmed = d.status === "CONFIRMED";
+        const effectiveDateStr = d.paymentDate || toISODateSP();
+        const effectiveDateObj = new Date(`${effectiveDateStr}T12:00:00-03:00`);
         await tx.financialTransaction.create({
           data: {
             ownerUserId: financeOwnerId,
@@ -118,8 +124,8 @@ export async function POST(request: Request) {
                 : "Quitação"
             } — ${client.fullName}`,
             amount: d.amount,
-            competenceDate: new Date(),
-            dueDate: new Date(),
+            competenceDate: effectiveDateObj,
+            dueDate: effectiveDateObj,
             paidAt: isConfirmed ? new Date() : null,
             status: isConfirmed ? "RECEIVED" : "PENDING",
             categoryId: category.id,

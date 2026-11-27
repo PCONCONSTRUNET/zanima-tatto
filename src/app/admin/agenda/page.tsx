@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdminPage } from "@/lib/security/rbac";
-import { toISODateSP, toNumber } from "@/lib/format";
+import {
+  computeAppointmentPaidAmount,
+  toISODateSP,
+  toNumber,
+} from "@/lib/format";
 import { autoCompleteElapsedAppointments } from "@/lib/agenda/scheduling";
 import { AgendaClient } from "@/components/admin/agenda-client";
 
@@ -13,7 +17,7 @@ export default async function AdminAgendaPage() {
   ]);
   const todayStr = toISODateSP();
 
-  const [appointments, blocks, rules, clients, projects, services] =
+  const [appointments, blocks, rules, clients, projects, services, studioAccounts] =
     await Promise.all([
       prisma.appointment.findMany({
         orderBy: { startAt: "asc" },
@@ -22,6 +26,10 @@ export default async function AdminAgendaPage() {
           project: { select: { id: true, name: true, style: true } },
           service: { select: { id: true, name: true, category: true, sessionsCount: true } },
           payments: { select: { id: true, amount: true, status: true, kind: true } },
+          financialTransactions: {
+            where: { type: "INCOME", status: { not: "CANCELLED" } },
+            select: { amount: true, status: true, paymentId: true },
+          },
           history: { orderBy: { createdAt: "desc" }, take: 8 },
         },
       }),
@@ -44,15 +52,21 @@ export default async function AdminAgendaPage() {
       prisma.studioService.findMany({
         orderBy: [{ category: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
       }),
+      prisma.financialAccount.findMany({
+        where: { context: "STUDIO", isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
     ]);
 
   return (
     <AgendaClient
       initialDate={todayStr}
       initialAppointments={appointments.map((a) => {
-        const confirmedPaid = a.payments
-          .filter((p) => p.status === "CONFIRMED")
-          .reduce((acc, p) => acc + toNumber(p.amount), 0);
+        const confirmedPaid = computeAppointmentPaidAmount(
+          a.payments,
+          a.financialTransactions
+        );
         const estimated = toNumber(a.priceEstimate);
         return {
           id: a.id,
@@ -108,6 +122,7 @@ export default async function AdminAgendaPage() {
       }))}
       clients={clients}
       projects={projects}
+      studioAccounts={studioAccounts}
       initialServices={services.map((s) => ({
         id: s.id,
         category: s.category,

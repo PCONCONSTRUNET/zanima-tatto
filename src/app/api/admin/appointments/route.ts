@@ -90,6 +90,10 @@ export async function GET(request: Request) {
           payments: {
             select: { id: true, amount: true, status: true, kind: true },
           },
+          financialTransactions: {
+            where: { type: "INCOME", status: { not: "CANCELLED" } },
+            select: { amount: true, status: true, paymentId: true },
+          },
           history: {
             orderBy: { createdAt: "desc" },
             take: 10,

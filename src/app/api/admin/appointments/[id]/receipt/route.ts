@@ -5,7 +5,11 @@ import {
   requireAdminApi,
   UnauthorizedError,
 } from "@/lib/security/rbac";
-import { formatSequentialCode, toNumber } from "@/lib/format";
+import {
+  computeAppointmentPaidAmount,
+  formatSequentialCode,
+  toNumber,
+} from "@/lib/format";
 import {
   APPOINTMENT_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -26,7 +30,11 @@ export async function GET(
         service: { select: { name: true, sessionsCount: true } },
         payments: {
           where: { status: "CONFIRMED" },
-          select: { amount: true },
+          select: { amount: true, status: true },
+        },
+        financialTransactions: {
+          where: { type: "INCOME", status: { not: "CANCELLED" } },
+          select: { amount: true, status: true, paymentId: true },
         },
       },
     });
@@ -37,9 +45,9 @@ export async function GET(
       );
     }
 
-    const paidAmount = appt.payments.reduce(
-      (acc, p) => acc + toNumber(p.amount),
-      0
+    const paidAmount = computeAppointmentPaidAmount(
+      appt.payments,
+      appt.financialTransactions
     );
     const totalSessions = Math.max(
       appt.totalSessions || 1,

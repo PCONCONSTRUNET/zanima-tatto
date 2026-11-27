@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { canAccessPersonalFinance, requireAdminPage } from "@/lib/security/rbac";
-import { toISODateSP, toNumber } from "@/lib/format";
+import {
+  computeAppointmentPaidAmount,
+  toISODateSP,
+  toNumber,
+} from "@/lib/format";
 import { autoCompleteElapsedAppointments } from "@/lib/agenda/scheduling";
 import { FinanceClient } from "@/components/admin/finance-client";
 
@@ -78,14 +82,14 @@ export default async function AdminFinanceiroPage() {
     prisma.appointment.findMany({
       where: { status: { not: "CANCELLED" } },
       orderBy: { startAt: "desc" },
-      take: 100,
+      take: 250,
       include: {
         client: { select: { id: true, fullName: true } },
         service: { select: { name: true } },
         payments: { select: { amount: true, status: true } },
         financialTransactions: {
           where: { type: "INCOME", status: { not: "CANCELLED" } },
-          select: { amount: true, status: true },
+          select: { amount: true, status: true, paymentId: true },
         },
       },
     }),
@@ -213,13 +217,10 @@ export default async function AdminFinanceiroPage() {
         createdAt: c.createdAt.toISOString(),
       }))}
       studioAppointments={appointments.map((a) => {
-        const txReceived = a.financialTransactions
-          .filter((tx) => tx.status === "RECEIVED" || tx.status === "PAID")
-          .reduce((acc, tx) => acc + toNumber(tx.amount), 0);
-        const payConfirmed = a.payments
-          .filter((p) => p.status === "CONFIRMED")
-          .reduce((acc, p) => acc + toNumber(p.amount), 0);
-        const receivedAmount = Math.max(txReceived, payConfirmed);
+        const receivedAmount = computeAppointmentPaidAmount(
+          a.payments,
+          a.financialTransactions
+        );
         return {
           id: a.id,
           clientId: a.client.id,

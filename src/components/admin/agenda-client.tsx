@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  DollarSign,
   Download,
   History,
   Plus,
@@ -21,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  computeAppointmentPaidAmount,
   formatBRL,
   formatDateBR,
   formatDateTimeBR,
@@ -447,6 +449,7 @@ function AgendaInner({
   clients,
   projects,
   initialServices,
+  studioAccounts = [],
 }: {
   initialDate: string;
   initialAppointments: AppointmentItem[];
@@ -455,6 +458,7 @@ function AgendaInner({
   clients: Array<{ id: string; fullName: string; whatsapp: string }>;
   projects: Array<{ id: string; name: string; clientId: string }>;
   initialServices: ServiceItem[];
+  studioAccounts?: Array<{ id: string; name: string }>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -475,6 +479,19 @@ function AgendaInner({
   const [toolsOpen, setToolsOpen] = useState(false);
   const [deleteApptTarget, setDeleteApptTarget] =
     useState<AppointmentItem | null>(null);
+
+  // Receber / Dar baixa direta no agendamento
+  const [payModalAppt, setPayModalAppt] = useState<AppointmentItem | null>(
+    null
+  );
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState("PIX");
+  const [payDate, setPayDate] = useState(initialDate);
+  const [payAccountId, setPayAccountId] = useState(
+    studioAccounts[0]?.id || ""
+  );
+  const [payNotes, setPayNotes] = useState("");
+  const [payError, setPayError] = useState<string | null>(null);
 
   // Modal de detalhes arrastável para o lado
   const [detailAppt, setDetailAppt] = useState<AppointmentItem | null>(null);
@@ -730,45 +747,131 @@ function AgendaInner({
     const res = await fetch("/api/admin/appointments");
     if (res.ok) {
       const data = await res.json();
-      setAppointments(
-        data.appointments.map(
-          (
-            a: AppointmentItem & {
-              client: { fullName: string; whatsapp: string };
-              project?: { name: string } | null;
-              service?: { id: string; name: string; category: string; sessionsCount?: number } | null;
-              payments: Array<{ amount: unknown; status: string }>;
-            }
-          ) => {
-            const paidAmount = a.payments
-              .filter((p) => p.status === "CONFIRMED")
-              .reduce((acc, p) => acc + Number(p.amount || 0), 0);
-            const est = Number(a.priceEstimate || 0);
-            return {
-              ...a,
-              clientName: a.client.fullName,
-              clientWhatsapp: a.client.whatsapp,
-              projectName: a.project?.name || null,
-              serviceId: a.serviceId || a.service?.id || null,
-              serviceName: a.service?.name || null,
-              serviceCategory: a.service?.category || null,
-              totalSessions: Math.max(
-                a.totalSessions || 1,
-                a.service?.sessionsCount || 1
-              ),
-              priceEstimate:
-                a.priceEstimate !== null ? Number(a.priceEstimate) : null,
-              depositRequired:
-                a.depositRequired !== null ? Number(a.depositRequired) : null,
-              paidAmount,
-              hasPendingPayment: est > 0 && paidAmount < est,
-            };
+      const mapped: AppointmentItem[] = data.appointments.map(
+        (
+          a: AppointmentItem & {
+            client: { fullName: string; whatsapp: string };
+            project?: { name: string } | null;
+            service?: {
+              id: string;
+              name: string;
+              category: string;
+              sessionsCount?: number;
+            } | null;
+            payments: Array<{ amount: unknown; status: string }>;
+            financialTransactions?: Array<{
+              amount: unknown;
+              status: string;
+              paymentId?: string | null;
+            }>;
           }
-        )
+        ) => {
+          const paidAmount = computeAppointmentPaidAmount(
+            a.payments,
+            a.financialTransactions || []
+          );
+          const est = Number(a.priceEstimate || 0);
+          return {
+            ...a,
+            clientName: a.client.fullName,
+            clientWhatsapp: a.client.whatsapp,
+            projectName: a.project?.name || null,
+            serviceId: a.serviceId || a.service?.id || null,
+            serviceName: a.service?.name || null,
+            serviceCategory: a.service?.category || null,
+            totalSessions: Math.max(
+              a.totalSessions || 1,
+              a.service?.sessionsCount || 1
+            ),
+            priceEstimate:
+              a.priceEstimate !== null ? Number(a.priceEstimate) : null,
+            depositRequired:
+              a.depositRequired !== null ? Number(a.depositRequired) : null,
+            paidAmount,
+            hasPendingPayment: est > 0 && paidAmount < est - 0.01,
+          };
+        }
+      );
+      setAppointments(mapped);
+      setDetailAppt((prev) =>
+        prev ? mapped.find((m) => m.id === prev.id) || null : null
       );
       setBlocks(data.blocks);
       setRules(data.rules);
       router.refresh();
+    }
+  };
+
+  const openPayModal = (appt: AppointmentItem) => {
+    const est = appt.priceEstimate || 0;
+    const remaining = Math.max(0, est - appt.paidAmount);
+    setPayModalAppt(appt);
+    setPayAmount(
+      remaining > 0
+        ? remaining.toFixed(2)
+        : appt.depositRequired
+        ? appt.depositRequired.toFixed(2)
+        : ""
+    );
+    setPayMethod(
+      appt.preferredPaymentMethod === "DEBIT_CARD"
+        ? "CREDIT_CARD"
+        : appt.preferredPaymentMethod === "BANK_TRANSFER"
+        ? "PIX"
+        : appt.preferredPaymentMethod || "PIX"
+    );
+    setPayDate(initialDate);
+    setPayAccountId((prev) => prev || studioAccounts[0]?.id || "");
+    setPayNotes("");
+    setPayError(null);
+  };
+
+  const handleReceiveApptPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payModalAppt) return;
+    const amt = Number(payAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setPayError("Informe um valor maior que zero.");
+      return;
+    }
+
+    const est = payModalAppt.priceEstimate || 0;
+    const remaining = Math.max(0, est - payModalAppt.paidAmount);
+    const kind: "DEPOSIT" | "PARTIAL" | "FULL" =
+      est > 0 && amt + 0.01 >= remaining
+        ? "FULL"
+        : payModalAppt.paidAmount <= 0.01
+        ? "DEPOSIT"
+        : "PARTIAL";
+
+    setSaving(true);
+    setPayError(null);
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: payModalAppt.clientId,
+          appointmentId: payModalAppt.id,
+          projectId: payModalAppt.projectId || null,
+          accountId: payAccountId || null,
+          kind,
+          method: payMethod,
+          amount: amt,
+          paymentDate: payDate,
+          status: "CONFIRMED",
+          notes: payNotes.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPayError(data?.error || "Não foi possível registrar o pagamento.");
+        return;
+      }
+      setPayModalAppt(null);
+      await refreshAgenda();
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1858,19 +1961,68 @@ function AgendaInner({
                   ) : null}
 
                   {detailAppt.priceEstimate !== null ? (
-                    <div className="px-4 py-3 flex items-center justify-between gap-3">
-                      <span className="text-[var(--text-secondary)]">
-                        Pago confirmado
-                      </span>
-                      <span className="font-semibold text-[var(--text-primary)] tabular-nums">
-                        {formatBRL(detailAppt.paidAmount)}
-                        {detailAppt.depositRequired
-                          ? ` (Sinal: ${formatBRL(detailAppt.depositRequired)})`
-                          : ""}
-                      </span>
-                    </div>
+                    <>
+                      <div className="px-4 py-3 flex items-center justify-between gap-3">
+                        <span className="text-[var(--text-secondary)]">
+                          Pago confirmado
+                        </span>
+                        <span className="font-semibold text-[var(--text-primary)] tabular-nums">
+                          {formatBRL(detailAppt.paidAmount)}
+                          {detailAppt.depositRequired
+                            ? ` (Sinal: ${formatBRL(detailAppt.depositRequired)})`
+                            : ""}
+                        </span>
+                      </div>
+
+                      {(() => {
+                        const remaining = Math.max(
+                          0,
+                          (detailAppt.priceEstimate || 0) - detailAppt.paidAmount
+                        );
+                        return (
+                          <div className="px-4 py-3 flex items-center justify-between gap-3">
+                            <span className="text-[var(--text-secondary)]">
+                              Saldo do agendamento
+                            </span>
+                            {remaining > 0.01 ? (
+                              <span className="font-semibold text-[var(--status-warning)] tabular-nums">
+                                Falta {formatBRL(remaining)}
+                              </span>
+                            ) : (
+                              <StatusBadge label="Quitado" tone="success" />
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
                   ) : null}
                 </div>
+
+                {(() => {
+                  const remaining = Math.max(
+                    0,
+                    (detailAppt.priceEstimate || 0) - detailAppt.paidAmount
+                  );
+                  const isSettled =
+                    detailAppt.priceEstimate !== null &&
+                    detailAppt.priceEstimate > 0 &&
+                    remaining <= 0.01;
+                  if (isSettled) return null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => openPayModal(detailAppt)}
+                      className="w-full h-10 px-4 rounded-2xl bg-[var(--action-primary)] text-[var(--action-primary-fg)] text-xs font-semibold inline-flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <DollarSign className="h-4 w-4" strokeWidth={2} />
+                      <span>
+                        {remaining > 0.01
+                          ? `Receber / Dar baixa (Falta ${formatBRL(remaining)})`
+                          : "Registrar pagamento deste agendamento"}
+                      </span>
+                    </button>
+                  );
+                })()}
 
                 {detailAppt.clientNotes || detailAppt.internalNotes ? (
                   <div className="rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-default)] p-4 space-y-2 text-xs">
@@ -3086,6 +3238,141 @@ function AgendaInner({
         </IosModalShell>
       ) : null}
 
+      {/* Modal Receber / Dar Baixa Direto na Agenda */}
+      {payModalAppt ? (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPayModalAppt(null);
+          }}
+          className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/65 backdrop-blur-xs p-0 md:p-4"
+        >
+          <form
+            onSubmit={handleReceiveApptPayment}
+            className="w-full max-h-[88dvh] md:max-w-md bg-[var(--bg-surface)] border-t md:border border-[var(--border-strong)]/80 rounded-t-[28px] md:rounded-[26px] p-5 space-y-4 overflow-y-auto shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base font-semibold">
+                  Receber pagamento
+                </h3>
+                <p className="text-xs text-[var(--brand-champagne)] font-medium mt-0.5">
+                  {payModalAppt.clientName} • {payModalAppt.title}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar modal"
+                onClick={() => setPayModalAppt(null)}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {payModalAppt.priceEstimate !== null ? (
+              <div className="rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-default)] p-3 grid grid-cols-3 gap-2 text-center text-xs tabular-nums">
+                <div>
+                  <p className="text-[10px] uppercase text-[var(--text-secondary)]">
+                    Total
+                  </p>
+                  <p className="font-semibold mt-0.5">
+                    {formatBRL(payModalAppt.priceEstimate)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-[var(--text-secondary)]">
+                    Pago
+                  </p>
+                  <p className="font-semibold text-[var(--status-success)] mt-0.5">
+                    {formatBRL(payModalAppt.paidAmount)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-[var(--text-secondary)]">
+                    Falta
+                  </p>
+                  <p className="font-semibold text-[var(--status-warning)] mt-0.5">
+                    {formatBRL(
+                      Math.max(
+                        0,
+                        payModalAppt.priceEstimate - payModalAppt.paidAmount
+                      )
+                    )}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {payError ? (
+              <div className="p-2.5 rounded-xl bg-[var(--status-danger-bg)] text-[var(--status-danger)] text-xs">
+                {payError}
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Valor recebido agora">
+                <CurrencyInput
+                  value={payAmount}
+                  onValueChange={setPayAmount}
+                  required
+                />
+              </Field>
+              <Field label="Data do pagamento">
+                <IosDatePicker value={payDate} onChange={setPayDate} />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Forma de pagamento">
+                <Select
+                  value={payMethod}
+                  onChange={(e) => setPayMethod(e.target.value)}
+                >
+                  <option value="PIX">Pix</option>
+                  <option value="CREDIT_CARD">Cartão</option>
+                  <option value="CASH">Dinheiro</option>
+                </Select>
+              </Field>
+              {studioAccounts.length > 0 ? (
+                <Field label="Entrar na conta">
+                  <Select
+                    value={payAccountId}
+                    onChange={(e) => setPayAccountId(e.target.value)}
+                  >
+                    {studioAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+            </div>
+
+            <Field label="Observações (opcional)">
+              <Input
+                value={payNotes}
+                onChange={(e) => setPayNotes(e.target.value)}
+                placeholder="Ex: Restante quitado na sessão..."
+              />
+            </Field>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setPayModalAppt(null)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Salvando..." : "Confirmar recebimento"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       <ConfirmModal
         open={Boolean(deleteApptTarget)}
         title="Excluir agendamento?"
@@ -3111,6 +3398,7 @@ export function AgendaClient(props: {
   clients: Array<{ id: string; fullName: string; whatsapp: string }>;
   projects: Array<{ id: string; name: string; clientId: string }>;
   initialServices: ServiceItem[];
+  studioAccounts?: Array<{ id: string; name: string }>;
 }) {
   return (
     <Suspense
