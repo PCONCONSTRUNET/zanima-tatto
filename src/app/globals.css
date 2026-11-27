@@ -67,6 +67,7 @@
 html {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
+  overflow-x: clip;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -74,8 +75,27 @@ body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
   font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
-  overflow-x: hidden;
+  overflow-x: clip;
   transition: background-color 150ms ease, color 150ms ease;
+}
+
+/* Previne zoom automático no iOS ao focar inputs/selects (<16px) e overflow em campos de data/hora */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  input[type="time"],
+  input[type="date"] {
+    min-width: 0 !important;
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }
 
 h1,
@@ -337,9 +357,19 @@ div.fixed.inset-0.z-50:not(.ios-modal-backdrop) > form {
   border-radius: 26px !important;
   max-height: 82dvh !important;
   overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   margin-top: auto !important;
   margin-bottom: auto !important;
   width: 100%;
+  min-width: 0;
+}
+
+div.fixed.inset-0.z-50:not(.ios-modal-backdrop) > div::-webkit-scrollbar,
+div.fixed.inset-0.z-50:not(.ios-modal-backdrop) > form::-webkit-scrollbar {
+  display: none;
 }
 
 @media (min-width: 768px) {

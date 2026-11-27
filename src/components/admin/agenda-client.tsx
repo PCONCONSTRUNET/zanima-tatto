@@ -428,7 +428,7 @@ function IosModalShell({
             : "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
           touchAction: "pan-y",
         }}
-        className={`w-full ${maxWidthClass} max-h-[88dvh] bg-[var(--bg-surface)] border-t md:border border-[var(--border-strong)]/80 rounded-t-[28px] md:rounded-[26px] shadow-[0_24px_70px_rgba(0,0,0,0.65)] overflow-y-auto pb-5 md:pb-2`}
+        className={`w-full ${maxWidthClass} max-h-[84dvh] bg-[var(--bg-surface)] border-t md:border border-[var(--border-strong)]/80 rounded-t-[28px] md:rounded-[26px] shadow-[0_24px_70px_rgba(0,0,0,0.65)] overflow-y-auto overflow-x-hidden overscroll-contain pb-5 md:pb-2`}
       >
         <div className="pt-2.5 pb-0.5 flex justify-center">
           <span className="h-1 w-9 rounded-full bg-[var(--border-strong)]" />
@@ -2064,8 +2064,8 @@ function AgendaInner({
                   </Field>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2 min-w-0">
+                  <div className="grid grid-cols-2 gap-3 min-w-0">
                     <Field label="Início">
                       <Input
                         type="time"
@@ -2386,8 +2386,8 @@ function AgendaInner({
               />
             </Field>
 
-            <div className="space-y-2">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="space-y-2 min-w-0">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 min-w-0">
                 <Field label="Data">
                   <IosDatePicker
                     value={date}
@@ -2395,7 +2395,7 @@ function AgendaInner({
                     markedDates={appointmentsCountByDate}
                   />
                 </Field>
-                <div className="grid grid-cols-2 gap-2.5 sm:col-span-2">
+                <div className="grid grid-cols-2 gap-2.5 sm:col-span-2 min-w-0">
                   <Field label="Início">
                     <Input
                       type="time"
@@ -2621,7 +2621,7 @@ function AgendaInner({
                   required
                 />
               </Field>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 min-w-0">
                 <Field label="Data início">
                   <IosDatePicker
                     value={blockStartDate}
@@ -2787,7 +2787,7 @@ function AgendaInner({
                             next[idx] = { ...r, startTime: e.target.value };
                             setRules(next);
                           }}
-                          className="h-9 px-2 text-xs tabular-nums w-full"
+                          className="h-10 md:h-9 px-2 text-base md:text-xs tabular-nums w-full min-w-0"
                         />
                       </label>
 
@@ -2803,7 +2803,7 @@ function AgendaInner({
                             next[idx] = { ...r, endTime: e.target.value };
                             setRules(next);
                           }}
-                          className="h-9 px-2 text-xs tabular-nums w-full"
+                          className="h-10 md:h-9 px-2 text-base md:text-xs tabular-nums w-full min-w-0"
                         />
                       </label>
 
@@ -2821,7 +2821,7 @@ function AgendaInner({
                             };
                             setRules(next);
                           }}
-                          className="h-9 px-2 text-xs tabular-nums w-full"
+                          className="h-10 md:h-9 px-2 text-base md:text-xs tabular-nums w-full min-w-0"
                         >
                           <option value="0">0 min</option>
                           <option value="10">10 min</option>

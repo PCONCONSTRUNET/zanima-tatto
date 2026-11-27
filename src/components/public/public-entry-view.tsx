@@ -134,11 +134,11 @@ export function PublicEntryView({
   };
 
   return (
-    <div className="min-h-screen bg-black relative overflow-x-clip">
+    <div className="min-h-dvh bg-black relative overflow-x-clip">
       {/* Plano principal com efeito de profundidade iOS quando o modal abre */}
       <div
         data-open={sheetOpen ? "true" : "false"}
-        className="ios-bg-stage min-h-screen flex flex-col justify-between bg-[var(--bg-canvas)] text-[var(--text-primary)] px-4 py-5 sm:py-6 origin-top"
+        className="ios-bg-stage min-h-dvh flex flex-col justify-between bg-[var(--bg-canvas)] text-[var(--text-primary)] px-4 py-5 sm:py-6 origin-top"
       >
         {/* Barra superior minimalista: Instalar App + Tema */}
         <header className="w-full max-w-md mx-auto flex items-center justify-end gap-2">
@@ -318,7 +318,7 @@ export function PublicEntryView({
                 ? { transform: `translate3d(0, ${dragOffsetY}px, 0)`, opacity: 1, transition: "none" }
                 : undefined
             }
-            className="ios-modal-sheet w-full sm:max-w-sm bg-[var(--bg-surface)] border-t sm:border border-white/12 rounded-t-[32px] sm:rounded-[32px] px-5 pt-2.5 pb-7 sm:pb-6 shadow-[0_-16px_48px_rgba(0,0,0,0.65)] max-h-[92dvh] overflow-y-auto"
+            className="ios-modal-sheet w-full sm:max-w-sm bg-[var(--bg-surface)] border-t sm:border border-white/12 rounded-t-[32px] sm:rounded-[32px] px-5 pt-2.5 pb-7 sm:pb-6 shadow-[0_-16px_48px_rgba(0,0,0,0.65)] max-h-[92dvh] overflow-y-auto overflow-x-hidden overscroll-contain"
           >
             {/* Barra arrastável estilo iOS */}
             <div

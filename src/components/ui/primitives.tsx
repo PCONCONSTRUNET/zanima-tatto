@@ -122,7 +122,7 @@ export function Input({
       type={type}
       value={displayValue}
       onChange={handleChange}
-      className={`w-full h-11 md:h-10 px-3 text-sm bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors ${className}`}
+      className={`w-full min-w-0 max-w-full h-11 md:h-10 px-3 text-base md:text-sm bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors ${className}`}
       {...props}
     />
   );
@@ -163,9 +163,9 @@ export function CurrencyInput({
         value={display}
         placeholder={placeholder}
         onChange={handleChange}
-        className={`w-full h-11 md:h-10 ${
+        className={`w-full min-w-0 max-w-full h-11 md:h-10 ${
           prefix ? "pl-9" : "px-3"
-        } pr-3 text-sm tabular-nums bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors ${className}`}
+        } pr-3 text-base md:text-sm tabular-nums bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors ${className}`}
         {...props}
       />
     </div>
@@ -199,7 +199,7 @@ export function DecimalInput({
       value={display}
       placeholder={placeholder}
       onChange={handleChange}
-      className={`w-full h-11 md:h-10 px-3 text-sm tabular-nums bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors ${className}`}
+      className={`w-full min-w-0 max-w-full h-11 md:h-10 px-3 text-base md:text-sm tabular-nums bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors ${className}`}
       {...props}
     />
   );
@@ -212,7 +212,7 @@ export function Select({
 }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className={`w-full h-11 md:h-10 px-3 text-sm bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors ${className}`}
+      className={`w-full min-w-0 max-w-full h-11 md:h-10 px-3 text-base md:text-sm bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors ${className}`}
       {...props}
     >
       {children}
@@ -226,7 +226,7 @@ export function Textarea({
 }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={`w-full p-3 text-sm bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors min-h-[96px] ${className}`}
+      className={`w-full min-w-0 max-w-full p-3 text-base md:text-sm bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--border-default)] rounded-[6px] focus:outline-none focus:border-[var(--action-primary)] transition-colors min-h-[96px] ${className}`}
       {...props}
     />
   );
@@ -244,7 +244,7 @@ export function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 min-w-0">
       <label className="block text-xs font-medium text-[var(--text-primary)]">
         {label}
       </label>

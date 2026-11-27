@@ -85,7 +85,7 @@ export function ClientShell({
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+    <div className="min-h-dvh flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
       <header className="sticky top-0 z-20 bg-[var(--bg-surface)] border-b border-[var(--border-default)]">
         <div className="max-w-6xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-4">
@@ -157,7 +157,7 @@ export function ClientShell({
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-6 py-5 pb-28 md:pb-10">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-6 py-5 pb-24 md:pb-10">
         {children}
       </main>
 

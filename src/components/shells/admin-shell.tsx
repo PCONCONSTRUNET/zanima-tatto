@@ -299,7 +299,7 @@ export function AdminShell({
     user.role === "OWNER" ? "Proprietária" : "Administração";
 
   return (
-    <div className="min-h-screen flex bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+    <div className="min-h-dvh flex bg-[var(--bg-canvas)] text-[var(--text-primary)]">
       {/* Sidebar Desktop Fixa e Recolhível */}
       <aside
         className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-[var(--bg-surface)] border-r border-[var(--border-default)] transition-[width] duration-200 ${
@@ -550,7 +550,7 @@ export function AdminShell({
           </div>
         </header>
 
-        <main className="flex-1 w-full max-w-[1380px] mx-auto px-4 md:px-6 py-5 pb-28 md:pb-8">
+        <main className="flex-1 w-full max-w-[1380px] mx-auto px-4 md:px-6 py-5 pb-24 md:pb-8">
           {children}
         </main>
 
