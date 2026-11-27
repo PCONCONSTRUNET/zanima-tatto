@@ -219,6 +219,7 @@ export function MobileFloatingDock({
               <Link
                 key={item.key ?? item.href ?? item.label}
                 href={item.href || "#"}
+                prefetch={true}
                 draggable={false}
                 className={itemClass}
               >

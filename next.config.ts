@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: process.env.NEXT_STANDALONE === "1" ? "standalone" : undefined,
+  experimental: {
+    staleTimes: {
+      dynamic: 45,
+      static: 180,
+    },
+  },
   images: {
     unoptimized: true,
   },
@@ -32,7 +38,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Cache-Control",
-            value: "no-store, no-cache, must-revalidate, private",
+            value: "private, no-cache, must-revalidate",
           },
         ],
       },
@@ -41,7 +47,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Cache-Control",
-            value: "no-store, no-cache, must-revalidate, private",
+            value: "private, no-cache, must-revalidate",
           },
         ],
       },

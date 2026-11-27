@@ -7,8 +7,10 @@ import { DashboardClient } from "@/components/admin/dashboard-client";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
-  const user = await requireAdminPage();
-  await autoCompleteElapsedAppointments();
+  const [, user] = await Promise.all([
+    autoCompleteElapsedAppointments().catch(() => {}),
+    requireAdminPage(),
+  ]);
 
   const now = new Date();
   const spParts = new Intl.DateTimeFormat("en-CA", {

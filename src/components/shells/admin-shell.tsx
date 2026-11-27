@@ -162,6 +162,7 @@ function SidebarNavGroups({
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    prefetch={true}
                     title={collapsed ? item.label : undefined}
                     onClick={onNavigate}
                     className={`flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium transition-all ${
@@ -236,6 +237,30 @@ export function AdminShell({
       ? pathname === "/admin"
       : pathname === href || pathname.startsWith(`${href}/`)
   );
+
+  // Pré-carrega abas principais em segundo plano para troca instantânea sem delay
+  useEffect(() => {
+    const hotRoutes = [
+      "/admin",
+      "/admin/agenda",
+      "/admin/servicos",
+      "/admin/clientes",
+      "/admin/projetos",
+      "/admin/orcamentos",
+      "/admin/financeiro",
+      "/admin/push",
+      "/admin/notificacoes",
+      "/admin/configuracoes",
+    ];
+    const timer = window.setTimeout(() => {
+      for (const route of hotRoutes) {
+        if (route !== pathname) {
+          router.prefetch(route);
+        }
+      }
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [pathname, router]);
 
   // Bloqueia scroll de fundo e permite fechar com Escape quando o menu esquerdo está aberto
   useEffect(() => {

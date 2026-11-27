@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -77,6 +77,24 @@ export function ClientShell({
   const { theme, toggleTheme } = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
 
+  useEffect(() => {
+    const hotRoutes = [
+      "/minha-conta",
+      "/minha-conta/agenda",
+      "/minha-conta/financeiro",
+      "/minha-conta/perfil",
+      "/minha-conta/minhas-tattoos",
+    ];
+    const timer = window.setTimeout(() => {
+      for (const route of hotRoutes) {
+        if (route !== pathname) {
+          router.prefetch(route);
+        }
+      }
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [pathname, router]);
+
   const isActive = (href: string, exact: boolean) =>
     exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
@@ -148,6 +166,7 @@ export function ClientShell({
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={true}
                   className={`inline-flex items-center gap-1.5 h-10 px-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
                     active
                       ? "border-[var(--action-primary)] text-[var(--text-primary)]"

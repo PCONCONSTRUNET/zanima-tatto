@@ -7,8 +7,10 @@ import { AgendaClient } from "@/components/admin/agenda-client";
 export const dynamic = "force-dynamic";
 
 export default async function AdminAgendaPage() {
-  await requireAdminPage();
-  await autoCompleteElapsedAppointments();
+  const [, ] = await Promise.all([
+    requireAdminPage(),
+    autoCompleteElapsedAppointments().catch(() => {}),
+  ]);
   const todayStr = toISODateSP();
 
   const [appointments, blocks, rules, clients, projects, services] =
