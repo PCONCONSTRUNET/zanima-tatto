@@ -1,8 +1,8 @@
-// ZANIMA TATTOO Service Worker
+// ZANIMA TATTOO Service Worker (Cache de marca estático)
 // Regra estrita de privacidade e LGPD: NUNCA armazenar em cache dados financeiros,
 // dados de saúde/prontuário, documentos assinados, rotas autenticadas ou arquivos privados.
 
-const STATIC_CACHE = "zanima-static-v1";
+const STATIC_CACHE = "zanima-static-v2";
 const STATIC_ASSETS = [
   "/brand/zanima-logo.png",
   "/brand/zanima-monogram.png",
@@ -71,28 +71,4 @@ self.addEventListener("fetch", (event) => {
       )
     );
   }
-});
-
-self.addEventListener("push", (event) => {
-  if (!event.data) return;
-  let payload = { title: "ZANIMA TATTOO", body: "Nova atualização.", url: "/" };
-  try {
-    payload = { ...payload, ...event.data.json() };
-  } catch {
-    payload.body = event.data.text();
-  }
-  event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/favicon-64.png",
-      data: { url: payload.url || "/" },
-    })
-  );
-});
-
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || "/";
-  event.waitUntil(self.clients.openWindow(targetUrl));
 });

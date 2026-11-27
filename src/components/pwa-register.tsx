@@ -15,8 +15,11 @@ export function PwaRegister() {
       "serviceWorker" in navigator &&
       window.location.protocol !== "file:"
     ) {
+      const swPath = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID
+        ? "/OneSignalSDKWorker.js"
+        : "/sw.js";
       navigator.serviceWorker
-        .register("/sw.js", { scope: "/", updateViaCache: "none" })
+        .register(swPath, { scope: "/", updateViaCache: "none" })
         .catch(() => {});
     }
   }, []);

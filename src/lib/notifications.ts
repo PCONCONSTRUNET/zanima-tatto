@@ -1,6 +1,11 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { IntegrationProvider, NotificationChannel } from "@prisma/client";
+import type { PushEventRuleKey } from "@/lib/push-config";
+import {
+  getPushRuntimeConfig,
+  sendOneSignalPushToUsers,
+} from "@/lib/push-server";
 
 export function isChannelConfiguredByEnv(provider: IntegrationProvider): boolean {
   switch (provider) {
@@ -10,7 +15,8 @@ export function isChannelConfiguredByEnv(provider: IntegrationProvider): boolean
       return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
     case "PUSH":
       return Boolean(
-        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY
+        (process.env.ONESIGNAL_APP_ID || process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID) &&
+          process.env.ONESIGNAL_REST_API_KEY
       );
     case "MERCADO_PAGO":
       return Boolean(process.env.MERCADOPAGO_ACCESS_TOKEN);
@@ -48,14 +54,43 @@ export async function dispatchNotification(params: {
       continue;
     }
 
-    const providerMap: Record<Exclude<NotificationChannel, "IN_APP">, IntegrationProvider> = {
+    if (channel === "PUSH") {
+      const pushRes = await sendOneSignalPushToUsers({
+        userIds: [params.recipientUserId],
+        title: params.title,
+        body: params.body,
+        linkUrl: params.linkUrl,
+      });
+
+      created.push(
+        await prisma.notification.create({
+          data: {
+            recipientUserId: params.recipientUserId,
+            channel: "PUSH",
+            eventType: params.eventType,
+            title: params.title,
+            body: params.body,
+            linkUrl: params.linkUrl ?? null,
+            status: pushRes.skipped
+              ? "SKIPPED_UNCONFIGURED"
+              : pushRes.ok
+                ? "QUEUED"
+                : "FAILED",
+          },
+        })
+      );
+      continue;
+    }
+
+    const providerMap: Record<
+      Exclude<NotificationChannel, "IN_APP" | "PUSH">,
+      IntegrationProvider
+    > = {
       WHATSAPP: "WHATSAPP",
       EMAIL: "EMAIL",
-      PUSH: "PUSH",
     };
 
     const configured = isChannelConfiguredByEnv(providerMap[channel]);
-    // Nunca simular envios externos: se a integração não estiver configurada, registra honestamente.
     created.push(
       await prisma.notification.create({
         data: {
@@ -74,20 +109,71 @@ export async function dispatchNotification(params: {
   return created;
 }
 
+export async function dispatchPushEvent(params: {
+  rule: PushEventRuleKey;
+  target: "CLIENT" | "ADMIN";
+  userIds: string[];
+  title: string;
+  body: string;
+  linkUrl?: string;
+}) {
+  const uniqueIds = Array.from(new Set(params.userIds.filter(Boolean)));
+  if (uniqueIds.length === 0) return;
+
+  const config = await getPushRuntimeConfig();
+  if (!config.globalEnabled) return;
+  if (params.target === "ADMIN" && !config.adminEnabled) return;
+  if (params.target === "CLIENT" && !config.clientEnabled) return;
+
+  const ruleCfg = config.rules[params.rule];
+  if (!ruleCfg) return;
+  const enabledForTarget =
+    params.target === "ADMIN" ? ruleCfg.admin : ruleCfg.client;
+  if (!enabledForTarget) return;
+
+  const pushRes = await sendOneSignalPushToUsers({
+    userIds: uniqueIds,
+    title: params.title,
+    body: params.body,
+    linkUrl: params.linkUrl,
+  });
+
+  await prisma.notification
+    .createMany({
+      data: uniqueIds.map((uid) => ({
+        recipientUserId: uid,
+        channel: "PUSH" as const,
+        eventType: params.rule,
+        title: params.title,
+        body: params.body,
+        linkUrl: params.linkUrl ?? null,
+        status: pushRes.skipped
+          ? ("SKIPPED_UNCONFIGURED" as const)
+          : pushRes.ok
+            ? ("QUEUED" as const)
+            : ("FAILED" as const),
+      })),
+    })
+    .catch(() => {});
+}
+
 export async function notifyStudioAdmins(params: {
   eventType: string;
   title: string;
   body: string;
   linkUrl?: string;
+  pushRule?: PushEventRuleKey;
 }) {
   const admins = await prisma.user.findMany({
     where: { role: { in: ["OWNER", "STAFF"] }, active: true },
     select: { id: true },
   });
+  const adminIds = admins.map((a) => a.id);
+
   await Promise.all(
-    admins.map((admin) =>
+    adminIds.map((adminId) =>
       dispatchNotification({
-        recipientUserId: admin.id,
+        recipientUserId: adminId,
         eventType: params.eventType,
         title: params.title,
         body: params.body,
@@ -96,4 +182,15 @@ export async function notifyStudioAdmins(params: {
       })
     )
   );
+
+  if (params.pushRule) {
+    await dispatchPushEvent({
+      rule: params.pushRule,
+      target: "ADMIN",
+      userIds: adminIds,
+      title: params.title,
+      body: params.body,
+      linkUrl: params.linkUrl,
+    });
+  }
 }

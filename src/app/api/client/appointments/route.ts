@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuthApi, UnauthorizedError } from "@/lib/security/rbac";
-import { notifyStudioAdmins } from "@/lib/notifications";
+import {
+  dispatchNotification,
+  dispatchPushEvent,
+  notifyStudioAdmins,
+} from "@/lib/notifications";
+import { formatDateTimeBR, formatSequentialCode } from "@/lib/format";
 
 const actionSchema = z.object({
   appointmentId: z.string().min(1),
-  action: z.enum(["confirm_presence", "request_reschedule"]),
+  action: z.enum(["confirm_presence", "request_reschedule", "cancel_appointment"]),
   note: z.string().trim().optional(),
 });
 
@@ -32,6 +37,9 @@ export async function POST(request: Request) {
         { status: 404 }
       );
     }
+
+    const apptCode = formatSequentialCode(appt.codeNumber, appt.id);
+    const whenBR = formatDateTimeBR(appt.startAt);
 
     if (parsed.data.action === "confirm_presence") {
       const updated = await prisma.$transaction([
@@ -61,9 +69,65 @@ export async function POST(request: Request) {
 
       await notifyStudioAdmins({
         eventType: "PRESENCE_CONFIRMED",
-        title: "Presença confirmada",
-        body: `${user.name} confirmou presença para "${appt.title}".`,
+        title: `Presença confirmada (#${apptCode})`,
+        body: `${user.name} confirmou presença para "${appt.title}" (${whenBR}).`,
         linkUrl: "/admin/agenda",
+        pushRule: "BOOKING_CONFIRMED_CLIENT",
+      });
+
+      return NextResponse.json({ appointment: updated[0] });
+    }
+
+    if (parsed.data.action === "cancel_appointment") {
+      if (appt.status === "COMPLETED" || appt.status === "CANCELLED") {
+        return NextResponse.json(
+          { error: "Este agendamento não pode ser cancelado." },
+          { status: 400 }
+        );
+      }
+
+      const updated = await prisma.$transaction([
+        prisma.appointment.update({
+          where: { id: appt.id },
+          data: { status: "CANCELLED" },
+        }),
+        prisma.appointmentHistory.create({
+          data: {
+            appointmentId: appt.id,
+            changedByUserId: user.id,
+            previousStatus: appt.status,
+            newStatus: "CANCELLED",
+            reason: parsed.data.note
+              ? `Cancelado pelo cliente: ${parsed.data.note}`
+              : "Cancelado pelo cliente na Área do Cliente",
+          },
+        }),
+      ]);
+
+      await notifyStudioAdmins({
+        eventType: "APPOINTMENT_CANCELLED",
+        title: `Agendamento #${apptCode} cancelado pelo cliente`,
+        body: `${user.name} cancelou "${appt.title}" (${whenBR}).`,
+        linkUrl: "/admin/agenda",
+        pushRule: "APPOINTMENT_CANCELLED",
+      });
+
+      await dispatchNotification({
+        recipientUserId: user.id,
+        eventType: "APPOINTMENT_CANCELLED",
+        title: `Agendamento #${apptCode} cancelado`,
+        body: `Seu agendamento "${appt.title}" de ${whenBR} foi cancelado.`,
+        linkUrl: "/minha-conta/agenda",
+        channels: ["IN_APP"],
+      });
+
+      await dispatchPushEvent({
+        rule: "APPOINTMENT_CANCELLED",
+        target: "CLIENT",
+        userIds: [user.id],
+        title: `Agendamento #${apptCode} cancelado`,
+        body: `Seu agendamento "${appt.title}" de ${whenBR} foi cancelado.`,
+        linkUrl: "/minha-conta/agenda",
       });
 
       return NextResponse.json({ appointment: updated[0] });

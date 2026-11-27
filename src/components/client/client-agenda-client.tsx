@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Ban,
   Calendar,
   CalendarClock,
   CheckCircle2,
@@ -70,6 +71,7 @@ export function ClientAgendaClient({
   const [rescheduleAppt, setRescheduleAppt] = useState<ClientAppt | null>(null);
   const [note, setNote] = useState("");
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const now = new Date();
@@ -109,6 +111,26 @@ export function ClientAgendaClient({
       });
       if (res.ok) {
         setFeedback("Presença confirmada com sucesso.");
+        setSelectedAppt(null);
+        router.refresh();
+      }
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const cancelAppointment = async (id: string) => {
+    setLoadingId(id);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/client/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointmentId: id, action: "cancel_appointment" }),
+      });
+      if (res.ok) {
+        setFeedback("Agendamento cancelado.");
+        setConfirmCancelId(null);
         setSelectedAppt(null);
         router.refresh();
       }
@@ -514,6 +536,46 @@ export function ClientAgendaClient({
                   </button>
                 )}
               </div>
+
+              {selectedAppt.status !== "COMPLETED" &&
+              selectedAppt.status !== "CANCELLED" &&
+              selectedAppt.status !== "NO_SHOW" ? (
+                confirmCancelId === selectedAppt.id ? (
+                  <div className="p-3 rounded-2xl bg-[var(--status-danger-bg)] border border-[var(--status-danger)]/25 space-y-2">
+                    <p className="text-xs font-medium text-[var(--status-danger)]">
+                      Confirmar cancelamento deste agendamento?
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setConfirmCancelId(null)}
+                      >
+                        Voltar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        disabled={loadingId === selectedAppt.id}
+                        onClick={() => cancelAppointment(selectedAppt.id)}
+                      >
+                        Sim, cancelar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCancelId(selectedAppt.id)}
+                    className="w-full h-9 inline-flex items-center justify-center gap-1.5 rounded-full text-xs font-medium text-[var(--status-danger)] hover:bg-[var(--status-danger-bg)] transition-colors cursor-pointer"
+                  >
+                    <Ban className="h-3.5 w-3.5" strokeWidth={1.6} />
+                    Cancelar agendamento
+                  </button>
+                )
+              ) : null}
             </div>
           </div>
         </div>

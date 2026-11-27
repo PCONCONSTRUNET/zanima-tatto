@@ -14,7 +14,11 @@ import {
   parseSPDateTime,
   toNumber,
 } from "@/lib/format";
-import { dispatchNotification, notifyStudioAdmins } from "@/lib/notifications";
+import {
+  dispatchNotification,
+  dispatchPushEvent,
+  notifyStudioAdmins,
+} from "@/lib/notifications";
 import { DEFAULT_DEPOSIT_AMOUNT, STUDIO_PIX_KEY } from "@/lib/pix";
 
 const bookingSchema = z.object({
@@ -174,20 +178,32 @@ export async function POST(request: Request) {
       appointment.id
     );
 
+    const dateBR = d.date.split("-").reverse().join("/");
+
     await notifyStudioAdmins({
       eventType: "NEW_ONLINE_BOOKING",
-      title: `Novo agendamento #${appointmentCode} (Pix)`,
-      body: `${resolvedName} agendou "${finalTitle}" para ${d.date.split("-").reverse().join("/")} às ${d.startTime} e informou Pix de ${formattedPaid}. Aguardando comprovante/confirmação.`,
+      title: `Pagamento concluído #${appointmentCode} (Pix)`,
+      body: `${resolvedName} agendou "${finalTitle}" para ${dateBR} às ${d.startTime} e informou pagamento Pix de ${formattedPaid}.`,
       linkUrl: "/admin/agenda",
+      pushRule: "CLIENT_MARKED_PAID",
     });
 
     await dispatchNotification({
       recipientUserId: sessionUser.id,
       eventType: "APPOINTMENT_CREATED",
-      title: `Agendamento #${appointmentCode} registrado`,
-      body: `"${finalTitle}" para ${d.date.split("-").reverse().join("/")} às ${d.startTime} foi registrado (${formattedPaid} via Pix). Envie o comprovante no WhatsApp para confirmação.`,
+      title: `Agendamento #${appointmentCode} confirmado`,
+      body: `"${finalTitle}" para ${dateBR} às ${d.startTime} foi registrado (${formattedPaid} via Pix). Envie o comprovante no WhatsApp para confirmação.`,
       linkUrl: "/minha-conta/agenda",
       channels: ["IN_APP"],
+    });
+
+    await dispatchPushEvent({
+      rule: "BOOKING_CONFIRMED_CLIENT",
+      target: "CLIENT",
+      userIds: [sessionUser.id],
+      title: `Agendamento #${appointmentCode} confirmado!`,
+      body: `"${finalTitle}" marcado para ${dateBR} às ${d.startTime}.`,
+      linkUrl: "/minha-conta/agenda",
     });
 
     return NextResponse.json(

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
+  BellRing,
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -39,6 +40,8 @@ import {
   type DockNavItem,
 } from "@/components/shells/mobile-floating-dock";
 import { useTheme } from "@/components/theme-provider";
+import { OneSignalUserSync } from "@/components/onesignal-init";
+import { PushOptInButton } from "@/components/ui/push-opt-in-button";
 import type { SafeSessionUser } from "@/lib/security/session";
 
 const PRIMARY_MOBILE_HREFS = [
@@ -109,8 +112,14 @@ const SIDEBAR_GROUPS = [
     title: "Sistema",
     items: [
       {
+        href: "/admin/push",
+        label: "Notificações Push",
+        icon: BellRing,
+        exact: false,
+      },
+      {
         href: "/admin/notificacoes",
-        label: "Notificações",
+        label: "Central de Notificações",
         icon: Bell,
         exact: false,
       },
@@ -300,6 +309,7 @@ export function AdminShell({
 
   return (
     <div className="min-h-dvh flex bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+      <OneSignalUserSync userId={user.id} role={user.role} />
       {/* Sidebar Desktop Fixa e Recolhível */}
       <aside
         className={`hidden md:flex flex-col fixed inset-y-0 left-0 z-30 bg-[var(--bg-surface)] border-r border-[var(--border-default)] transition-[width] duration-200 ${
@@ -426,6 +436,12 @@ export function AdminShell({
         />
 
         <div className="border-t border-[var(--border-default)] p-3 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-2 bg-[var(--bg-surface)]">
+          <PushOptInButton
+            userId={user.id}
+            role={user.role}
+            compact
+            className="w-full justify-center"
+          />
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"

@@ -11,9 +11,17 @@ import {
   assertNoScheduleConflict,
   ScheduleConflictError,
 } from "@/lib/agenda/scheduling";
-import { parseSPDateTime } from "@/lib/format";
+import {
+  formatDateTimeBR,
+  formatSequentialCode,
+  parseSPDateTime,
+} from "@/lib/format";
 import { recordAuditLog } from "@/lib/security/audit";
-import { dispatchNotification, notifyStudioAdmins } from "@/lib/notifications";
+import {
+  dispatchNotification,
+  dispatchPushEvent,
+  notifyStudioAdmins,
+} from "@/lib/notifications";
 import { APPOINTMENT_STATUS_LABELS } from "@/lib/domain-labels";
 
 const patchSchema = z.object({
@@ -147,15 +155,116 @@ export async function PATCH(
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
 
+    const apptCode = formatSequentialCode(
+      updated.saved.codeNumber,
+      updated.saved.id
+    );
+    const whenBR = formatDateTimeBR(updated.saved.startAt);
+    const label = updated.serviceName || updated.saved.title;
     const isCompletedMultiSessionTransition =
       updated.prevStatus !== "COMPLETED" &&
       updated.saved.status === "COMPLETED" &&
       updated.saved.sessionNumber < updated.saved.totalSessions;
 
-    if (isCompletedMultiSessionTransition) {
+    if (
+      updated.prevStatus !== "NO_SHOW" &&
+      updated.saved.status === "NO_SHOW"
+    ) {
+      await notifyStudioAdmins({
+        eventType: "APPOINTMENT_NO_SHOW",
+        title: `Cliente faltou (#${apptCode})`,
+        body: `${updated.clientName} foi marcado(a) como falta em "${label}" (${whenBR}).`,
+        linkUrl: "/admin/agenda",
+        pushRule: "CLIENT_NO_SHOW",
+      });
+
+      if (updated.clientUserId) {
+        await dispatchNotification({
+          recipientUserId: updated.clientUserId,
+          eventType: "APPOINTMENT_NO_SHOW",
+          title: "Você faltou ao seu agendamento",
+          body: `Você faltou seu agendamento #${apptCode} (${label}) de ${whenBR}. Entre em contato caso precise reagendar.`,
+          linkUrl: "/minha-conta/agenda",
+          channels: ["IN_APP", "EMAIL"],
+        });
+        await dispatchPushEvent({
+          rule: "CLIENT_NO_SHOW",
+          target: "CLIENT",
+          userIds: [updated.clientUserId],
+          title: "Você faltou ao seu agendamento",
+          body: `Você faltou seu agendamento #${apptCode} (${label}) de ${whenBR}.`,
+          linkUrl: "/minha-conta/agenda",
+        });
+      }
+    } else if (
+      updated.prevStatus !== "CANCELLED" &&
+      updated.saved.status === "CANCELLED"
+    ) {
+      await notifyStudioAdmins({
+        eventType: "APPOINTMENT_CANCELLED",
+        title: `Agendamento #${apptCode} cancelado`,
+        body: `O atendimento de ${updated.clientName} ("${label}" em ${whenBR}) foi cancelado.`,
+        linkUrl: "/admin/agenda",
+        pushRule: "APPOINTMENT_CANCELLED",
+      });
+
+      if (updated.clientUserId) {
+        await dispatchNotification({
+          recipientUserId: updated.clientUserId,
+          eventType: "APPOINTMENT_CANCELLED",
+          title: `Agendamento #${apptCode} cancelado`,
+          body: `Seu agendamento "${label}" em ${whenBR} foi cancelado.`,
+          linkUrl: "/minha-conta/agenda",
+          channels: ["IN_APP", "EMAIL"],
+        });
+        await dispatchPushEvent({
+          rule: "APPOINTMENT_CANCELLED",
+          target: "CLIENT",
+          userIds: [updated.clientUserId],
+          title: `Agendamento #${apptCode} cancelado`,
+          body: `Seu agendamento "${label}" de ${whenBR} foi cancelado.`,
+          linkUrl: "/minha-conta/agenda",
+        });
+      }
+    } else if (
+      updated.prevStatus !== "CONFIRMED" &&
+      updated.saved.status === "CONFIRMED"
+    ) {
+      if (updated.clientUserId) {
+        await dispatchNotification({
+          recipientUserId: updated.clientUserId,
+          eventType: "APPOINTMENT_CONFIRMED",
+          title: `Agendamento #${apptCode} confirmado!`,
+          body: `Seu atendimento "${label}" em ${whenBR} foi confirmado pelo estúdio.`,
+          linkUrl: "/minha-conta/agenda",
+          channels: ["IN_APP", "EMAIL"],
+        });
+        await dispatchPushEvent({
+          rule: "BOOKING_CONFIRMED_CLIENT",
+          target: "CLIENT",
+          userIds: [updated.clientUserId],
+          title: `Agendamento #${apptCode} confirmado!`,
+          body: `Seu atendimento "${label}" em ${whenBR} foi confirmado pelo estúdio.`,
+          linkUrl: "/minha-conta/agenda",
+        });
+      }
+      const adminIds = (
+        await prisma.user.findMany({
+          where: { role: { in: ["OWNER", "STAFF"] }, active: true },
+          select: { id: true },
+        })
+      ).map((a) => a.id);
+      await dispatchPushEvent({
+        rule: "BOOKING_CONFIRMED_CLIENT",
+        target: "ADMIN",
+        userIds: adminIds,
+        title: `Agendamento #${apptCode} confirmado`,
+        body: `${updated.clientName} — "${label}" em ${whenBR}.`,
+        linkUrl: "/admin/agenda",
+      });
+    } else if (isCompletedMultiSessionTransition) {
       const nextSession = updated.saved.sessionNumber + 1;
       const totalSessions = updated.saved.totalSessions;
-      const label = updated.serviceName || updated.saved.title;
 
       await notifyStudioAdmins({
         eventType: "SESSION_NEXT_PENDING",

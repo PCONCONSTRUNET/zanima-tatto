@@ -10,7 +10,7 @@ import {
   UnauthorizedError,
 } from "@/lib/security/rbac";
 import { recordAuditLog } from "@/lib/security/audit";
-import { dispatchNotification } from "@/lib/notifications";
+import { dispatchNotification, dispatchPushEvent } from "@/lib/notifications";
 
 const createTxSchema = z.object({
   context: z.enum(["STUDIO", "PERSONAL"]),
@@ -235,14 +235,25 @@ export async function POST(request: Request) {
     if (linkedClient?.userId && created[0]) {
       const settledFirst =
         created[0].status === "RECEIVED" || created[0].status === "PAID";
+      const amountBR = d.amount.toFixed(2).replace(".", ",");
       await dispatchNotification({
         recipientUserId: linkedClient.userId,
         eventType: settledFirst ? "PAYMENT_CONFIRMED" : "PAYMENT_PENDING",
-        title: settledFirst ? "Pagamento confirmado" : "Novo pagamento registrado",
-        body: `${d.description} — R$ ${d.amount.toFixed(2).replace(".", ",")}.`,
+        title: settledFirst ? "Pagamento concluído" : "Novo pagamento registrado",
+        body: `${d.description} — R$ ${amountBR}.`,
         linkUrl: "/minha-conta/financeiro",
         channels: ["IN_APP"],
       });
+      if (settledFirst && d.type === "INCOME") {
+        await dispatchPushEvent({
+          rule: "ADMIN_PAYMENT_REGISTERED",
+          target: "CLIENT",
+          userIds: [linkedClient.userId],
+          title: "Pagamento concluído!",
+          body: `${d.description} — R$ ${amountBR} confirmado.`,
+          linkUrl: "/minha-conta/financeiro",
+        });
+      }
     }
 
     await recordAuditLog({

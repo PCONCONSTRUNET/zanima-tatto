@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   Bell,
+  BellRing,
   FolderKanban,
   Gift,
   Globe,
@@ -68,6 +69,12 @@ const CATEGORIES = [
         label: "Fidelização e Desenhos",
         description: "Cupons, indicações, vale-presente, flashes e lista de espera",
         icon: Gift,
+      },
+      {
+        href: "/admin/push",
+        label: "Notificações Push",
+        description: "Regras automáticas Admin/Cliente, OneSignal e disparo manual para todos",
+        icon: BellRing,
       },
       {
         href: "/admin/notificacoes",

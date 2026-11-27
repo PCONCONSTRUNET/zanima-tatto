@@ -3,6 +3,7 @@ import { Inter, Manrope } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PwaRegister } from "@/components/pwa-register";
+import { OneSignalInit } from "@/components/onesignal-init";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -76,6 +77,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           <PwaRegister />
+          <OneSignalInit
+            appId={process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || ""}
+            safariWebId={process.env.NEXT_PUBLIC_ONESIGNAL_SAFARI_WEB_ID || ""}
+          />
           {children}
         </ThemeProvider>
       </body>

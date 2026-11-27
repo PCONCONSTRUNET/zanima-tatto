@@ -18,6 +18,8 @@ import {
 import { BrandLogo, PconSignature } from "@/components/brand-mark";
 import { MobileFloatingDock } from "@/components/shells/mobile-floating-dock";
 import { useTheme } from "@/components/theme-provider";
+import { OneSignalUserSync } from "@/components/onesignal-init";
+import { PushOptInButton } from "@/components/ui/push-opt-in-button";
 import type { SafeSessionUser } from "@/lib/security/session";
 
 const CLIENT_MOBILE_NAV = [
@@ -86,6 +88,7 @@ export function ClientShell({
 
   return (
     <div className="min-h-dvh flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+      <OneSignalUserSync userId={user.id} role={user.role} />
       <header className="sticky top-0 z-20 bg-[var(--bg-surface)] border-b border-[var(--border-default)]">
         <div className="max-w-6xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-4">
@@ -97,6 +100,7 @@ export function ClientShell({
           </div>
 
           <div className="flex items-center gap-2">
+            <PushOptInButton userId={user.id} role={user.role} compact />
             <Link
               href="/orcamento"
               className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-[var(--border-default)] text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]"

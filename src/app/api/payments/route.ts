@@ -8,7 +8,7 @@ import {
   UnauthorizedError,
 } from "@/lib/security/rbac";
 import { toNumber } from "@/lib/format";
-import { dispatchNotification } from "@/lib/notifications";
+import { dispatchNotification, dispatchPushEvent } from "@/lib/notifications";
 import { recordAuditLog } from "@/lib/security/audit";
 
 const registerPaymentSchema = z.object({
@@ -149,14 +149,47 @@ export async function POST(request: Request) {
       return payment;
     });
 
-    if (client.userId && d.status === "CONFIRMED") {
-      await dispatchNotification({
-        recipientUserId: client.userId,
-        eventType: "PAYMENT_CONFIRMED",
-        title: "Pagamento confirmado",
-        body: `Recebemos a confirmação do seu pagamento de R$ ${d.amount.toFixed(2).replace(".", ",")}.`,
-        linkUrl: "/minha-conta/financeiro",
-        channels: ["IN_APP"],
+    if (d.status === "CONFIRMED") {
+      const kindLabel =
+        d.kind === "DEPOSIT"
+          ? "de sinal"
+          : d.kind === "PARTIAL"
+            ? "parcial"
+            : "total";
+      const amountBR = d.amount.toFixed(2).replace(".", ",");
+
+      if (client.userId) {
+        await dispatchNotification({
+          recipientUserId: client.userId,
+          eventType: "PAYMENT_CONFIRMED",
+          title: "Pagamento concluído",
+          body: `Recebemos a confirmação do seu pagamento ${kindLabel} de R$ ${amountBR}.`,
+          linkUrl: "/minha-conta/financeiro",
+          channels: ["IN_APP"],
+        });
+        await dispatchPushEvent({
+          rule: "ADMIN_PAYMENT_REGISTERED",
+          target: "CLIENT",
+          userIds: [client.userId],
+          title: "Pagamento concluído!",
+          body: `Seu pagamento ${kindLabel} de R$ ${amountBR} foi confirmado.`,
+          linkUrl: "/minha-conta/financeiro",
+        });
+      }
+
+      const adminIds = (
+        await prisma.user.findMany({
+          where: { role: { in: ["OWNER", "STAFF"] }, active: true },
+          select: { id: true },
+        })
+      ).map((a) => a.id);
+      await dispatchPushEvent({
+        rule: "ADMIN_PAYMENT_REGISTERED",
+        target: "ADMIN",
+        userIds: adminIds,
+        title: "Pagamento registrado",
+        body: `${client.fullName} — pagamento ${kindLabel} de R$ ${amountBR}.`,
+        linkUrl: "/admin/financeiro",
       });
     }
 

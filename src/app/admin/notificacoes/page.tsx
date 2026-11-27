@@ -25,9 +25,9 @@ export default async function AdminNotificacoesPage() {
       detail: "SMTP_HOST / SMTP_USER / SMTP_PASS",
     },
     {
-      name: "Web Push (VAPID)",
+      name: "Web Push (OneSignal)",
       configured: isChannelConfiguredByEnv("PUSH"),
-      detail: "NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY",
+      detail: "ONESIGNAL_APP_ID / ONESIGNAL_REST_API_KEY",
     },
   ];
 

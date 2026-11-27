@@ -14,7 +14,7 @@ import {
 } from "@/lib/agenda/scheduling";
 import { parseSPDateTime } from "@/lib/format";
 import { recordAuditLog } from "@/lib/security/audit";
-import { dispatchNotification } from "@/lib/notifications";
+import { dispatchNotification, dispatchPushEvent } from "@/lib/notifications";
 
 const createSchema = z.object({
   clientId: z.string().min(1, "Selecione o cliente."),
@@ -195,13 +195,22 @@ export async function POST(request: Request) {
     });
 
     if (client?.userId) {
+      const dateBR = d.date.split("-").reverse().join("/");
       await dispatchNotification({
         recipientUserId: client.userId,
         eventType: "APPOINTMENT_CREATED",
-        title: "Novo agendamento no ZANIMA TATTOO",
-        body: `Seu atendimento "${d.title}" foi registrado para ${d.date.split("-").reverse().join("/")} às ${d.startTime}.`,
+        title: "Agendamento confirmado no ZANIMA TATTOO",
+        body: `Seu atendimento "${d.title}" foi registrado para ${dateBR} às ${d.startTime}.`,
         linkUrl: "/minha-conta/agenda",
         channels: ["IN_APP", "EMAIL"],
+      });
+      await dispatchPushEvent({
+        rule: "BOOKING_CONFIRMED_CLIENT",
+        target: "CLIENT",
+        userIds: [client.userId],
+        title: "Agendamento confirmado!",
+        body: `"${d.title}" confirmado para ${dateBR} às ${d.startTime}.`,
+        linkUrl: "/minha-conta/agenda",
       });
     }
 
