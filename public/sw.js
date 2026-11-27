@@ -2,7 +2,7 @@
 // Regra estrita de privacidade e LGPD: NUNCA armazenar em cache dados financeiros,
 // dados de saúde/prontuário, documentos assinados, rotas autenticadas ou arquivos privados.
 
-const STATIC_CACHE = "zanima-static-v2";
+const STATIC_CACHE = "zanima-static-v3";
 const STATIC_ASSETS = [
   "/brand/zanima-logo.png",
   "/brand/zanima-monogram.png",
