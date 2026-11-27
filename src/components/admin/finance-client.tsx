@@ -2532,14 +2532,18 @@ function FinanceInner({
               </Field>
               <Field label="Pagamento">
                 <Select
-                  value={txMethod}
+                  value={
+                    txMethod === "DEBIT_CARD"
+                      ? "CREDIT_CARD"
+                      : txMethod === "BANK_TRANSFER"
+                      ? "PIX"
+                      : txMethod
+                  }
                   onChange={(e) => setTxMethod(e.target.value)}
                 >
-                  {Object.entries(PAYMENT_METHOD_LABELS).map(([k, l]) => (
-                    <option key={k} value={k}>
-                      {l}
-                    </option>
-                  ))}
+                  <option value="PIX">Pix</option>
+                  <option value="CREDIT_CARD">Cartão</option>
+                  <option value="CASH">Dinheiro</option>
                 </Select>
               </Field>
             </div>
