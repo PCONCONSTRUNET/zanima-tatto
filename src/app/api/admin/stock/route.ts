@@ -200,18 +200,36 @@ export async function DELETE(request: Request) {
 
     const url = new URL(request.url);
     let id = url.searchParams.get("id")?.trim() || "";
-    if (!id) {
-      const body = await request.json().catch(() => ({}));
-      if (typeof body?.id === "string") {
-        id = body.id.trim();
-      }
+    let entity = url.searchParams.get("entity")?.trim() || "item";
+    const body = await request.json().catch(() => ({}));
+    if (!id && typeof body?.id === "string") {
+      id = body.id.trim();
+    }
+    if (typeof body?.entity === "string" && body.entity.trim()) {
+      entity = body.entity.trim();
     }
 
     if (!id) {
       return NextResponse.json(
-        { error: "Informe o material que deseja excluir." },
+        { error: "Informe o registro que deseja excluir." },
         { status: 400 }
       );
+    }
+
+    if (entity === "supplier") {
+      const existingSupplier = await prisma.supplier.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!existingSupplier) {
+        return NextResponse.json(
+          { error: "Fornecedor não encontrado." },
+          { status: 404 }
+        );
+      }
+
+      await prisma.supplier.delete({ where: { id } });
+      return NextResponse.json({ ok: true });
     }
 
     const existing = await prisma.stockItem.findUnique({

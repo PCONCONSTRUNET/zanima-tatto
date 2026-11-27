@@ -8,8 +8,10 @@ import {
   ArrowUp,
   ChevronDown,
   Package,
+  Phone,
   Plus,
   Trash2,
+  Truck,
   X,
 } from "lucide-react";
 import { formatBRL, formatDateBR, formatDateTimeBR } from "@/lib/format";
@@ -62,6 +64,7 @@ export function StockClient({
   projects: Array<{ id: string; name: string }>;
 }) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"items" | "suppliers">("items");
   const [itemModal, setItemModal] = useState(false);
   const [supplierModal, setSupplierModal] = useState(false);
   const [movModal, setMovModal] = useState(false);
@@ -81,6 +84,10 @@ export function StockClient({
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<StockItemRow | null>(null);
+  const [deleteSupplierTarget, setDeleteSupplierTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // Supplier
@@ -172,23 +179,47 @@ export function StockClient({
   const handleCreateSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch("/api/admin/stock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entity: "supplier",
-          name: supName,
-          phone: supPhone || undefined,
+          name: supName.trim(),
+          phone: supPhone.trim() || undefined,
         }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data?.error || "Não foi possível salvar o fornecedor.");
+        return;
+      }
+      setSupplierModal(false);
+      setSupName("");
+      setSupPhone("");
+      setActiveTab("suppliers");
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteSupplier = async () => {
+    if (!deleteSupplierTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/admin/stock", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entity: "supplier", id: deleteSupplierTarget.id }),
+      });
       if (res.ok) {
-        setSupplierModal(false);
-        setSupName("");
+        setDeleteSupplierTarget(null);
         router.refresh();
       }
     } finally {
-      setSaving(false);
+      setDeleting(false);
     }
   };
 
@@ -234,34 +265,76 @@ export function StockClient({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setSupplierModal(true)}>
-            Fornecedores ({suppliers.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setMovModal(true)}
-            disabled={items.length === 0}
-          >
-            Entrada / Saída
-          </Button>
-          <Button size="sm" onClick={() => setItemModal(true)}>
-            <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
-            Novo material
-          </Button>
+          {activeTab === "items" ? (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setMovModal(true)}
+                disabled={items.length === 0}
+              >
+                Entrada / Saída
+              </Button>
+              <Button size="sm" onClick={() => setItemModal(true)}>
+                <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+                Novo material
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => {
+                setError(null);
+                setSupplierModal(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+              Novo fornecedor
+            </Button>
+          )}
         </div>
       </div>
 
-      {lowStockCount > 0 ? (
-        <div className="p-3.5 rounded-[8px] bg-[var(--status-warning-bg)] text-xs flex items-center gap-2 text-[var(--status-warning)]">
-          <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-          <span>
-            {lowStockCount} item(ns) atingiram o estoque mínimo e precisam de reposição.
-          </span>
-        </div>
-      ) : null}
+      {/* Abas separadas: Materiais x Fornecedores */}
+      <div className="inline-flex rounded-xl border border-[var(--border-default)] bg-[var(--bg-subtle)] p-1 gap-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab("items")}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors ${
+            activeTab === "items"
+              ? "bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-xs"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <Package className="h-3.5 w-3.5" strokeWidth={1.5} />
+          Materiais ({items.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("suppliers")}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors ${
+            activeTab === "suppliers"
+              ? "bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-xs"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+        >
+          <Truck className="h-3.5 w-3.5" strokeWidth={1.5} />
+          Fornecedores ({suppliers.length})
+        </button>
+      </div>
 
-      {items.length === 0 ? (
+      {activeTab === "items" ? (
+        <>
+          {lowStockCount > 0 ? (
+            <div className="p-3.5 rounded-[8px] bg-[var(--status-warning-bg)] text-xs flex items-center gap-2 text-[var(--status-warning)]">
+              <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+              <span>
+                {lowStockCount} item(ns) atingiram o estoque mínimo e precisam de reposição.
+              </span>
+            </div>
+          ) : null}
+
+          {items.length === 0 ? (
         <EmptyState
           icon={<Package className="h-5 w-5" strokeWidth={1.5} />}
           title="Nenhum material cadastrado"
@@ -371,6 +444,66 @@ export function StockClient({
           </ul>
         </section>
       ) : null}
+        </>
+      ) : suppliers.length === 0 ? (
+        <EmptyState
+          icon={<Truck className="h-5 w-5" strokeWidth={1.5} />}
+          title="Nenhum fornecedor cadastrado"
+          description="Cadastre seus fornecedores de tintas, agulhas e descartáveis para vincular aos materiais do estoque."
+          action={
+            <Button
+              size="sm"
+              onClick={() => {
+                setError(null);
+                setSupplierModal(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+              Adicionar fornecedor
+            </Button>
+          }
+        />
+      ) : (
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-[8px] overflow-hidden">
+          <div className="hidden sm:grid grid-cols-12 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-secondary)] bg-[var(--bg-subtle)] border-b border-[var(--border-default)]">
+            <span className="col-span-6">Fornecedor</span>
+            <span className="col-span-4">Telefone / WhatsApp</span>
+            <span className="col-span-2 text-right">Ações</span>
+          </div>
+          <ul className="divide-y divide-[var(--border-default)]">
+            {suppliers.map((s) => (
+              <li
+                key={s.id}
+                className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2 px-4 py-3 text-xs"
+              >
+                <div className="sm:col-span-6 min-w-0">
+                  <p className="text-sm font-medium truncate">{s.name}</p>
+                  {s.email ? (
+                    <p className="text-[11px] text-[var(--text-secondary)] truncate">
+                      {s.email}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="sm:col-span-4 flex items-center gap-1.5 text-[var(--text-secondary)] tabular-nums">
+                  <Phone className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                  <span>{s.phone || "Sem telefone"}</span>
+                </div>
+                <div className="sm:col-span-2 flex justify-end">
+                  <button
+                    type="button"
+                    aria-label={`Excluir fornecedor ${s.name}`}
+                    title="Excluir fornecedor"
+                    onClick={() => setDeleteSupplierTarget({ id: s.id, name: s.name })}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-[var(--text-muted)] hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <ConfirmModal
         open={Boolean(deleteTarget)}
@@ -554,20 +687,60 @@ export function StockClient({
         </div>
       ) : null}
 
-      {/* Modal Fornecedor */}
+      <ConfirmModal
+        open={Boolean(deleteSupplierTarget)}
+        title="Excluir fornecedor"
+        description={
+          deleteSupplierTarget
+            ? `Tem certeza que deseja excluir o fornecedor "${deleteSupplierTarget.name}"?`
+            : ""
+        }
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        danger
+        loading={deleting}
+        onConfirm={handleDeleteSupplier}
+        onCancel={() => !deleting && setDeleteSupplierTarget(null)}
+      />
+
+      {/* Modal Adicionar Fornecedor */}
       {supplierModal ? (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-xs p-0 md:p-4">
           <form
             onSubmit={handleCreateSupplier}
             className="w-full max-h-[88dvh] md:max-w-md bg-[var(--bg-surface)] border-t md:border border-[var(--border-strong)]/70 rounded-t-[28px] md:rounded-3xl p-5 space-y-4 overflow-y-auto shadow-2xl"
           >
-            <h3 className="font-display text-base font-semibold">
-              Fornecedores
-            </h3>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base font-semibold">
+                  Novo fornecedor
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Cadastre o nome e contato para vincular ao estoque.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar modal"
+                onClick={() => {
+                  setSupplierModal(false);
+                  setError(null);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {error ? (
+              <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                {error}
+              </p>
+            ) : null}
             <Field label="Nome do fornecedor">
               <Input
                 value={supName}
                 onChange={(e) => setSupName(e.target.value)}
+                placeholder="Ex: Tattoo Supply Brasil"
                 required
               />
             </Field>
@@ -580,25 +753,16 @@ export function StockClient({
                 onChange={(e) => setSupPhone(e.target.value)}
               />
             </Field>
-            {suppliers.length > 0 ? (
-              <ul className="max-h-32 overflow-y-auto text-xs divide-y divide-[var(--border-default)]">
-                {suppliers.map((s) => (
-                  <li key={s.id} className="py-1.5 flex justify-between">
-                    <span>{s.name}</span>
-                    <span className="text-[var(--text-secondary)]">
-                      {s.phone || "—"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 pt-1">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setSupplierModal(false)}
+                onClick={() => {
+                  setSupplierModal(false);
+                  setError(null);
+                }}
               >
-                Fechar
+                Cancelar
               </Button>
               <Button type="submit" disabled={saving}>
                 Adicionar fornecedor
