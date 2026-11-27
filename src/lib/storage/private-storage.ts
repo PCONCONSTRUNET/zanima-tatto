@@ -2,8 +2,18 @@ import "server-only";
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
+import { del, get, put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import type { FileVisibility } from "@prisma/client";
+
+const BLOB_PREFIX = "blob:";
+
+function isBlobConfigured(): boolean {
+  return Boolean(
+    process.env.BLOB_READ_WRITE_TOKEN?.trim() ||
+      process.env.BLOB_STORE_ID?.trim()
+  );
+}
 
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -97,13 +107,22 @@ export async function savePrivateFile(params: {
     throw new Error("O conteúdo do arquivo não corresponde ao formato informado.");
   }
 
-  const root = getPrivateStorageRoot();
-  await fs.mkdir(root, { recursive: true });
+  const fileName = `${crypto.randomUUID()}${extensionFromMime(file.type)}`;
+  let storageKey = fileName;
 
-  const storageKey = `${crypto.randomUUID()}${extensionFromMime(file.type)}`;
-  const targetPath = path.join(/*turbopackIgnore: true*/ root, path.basename(storageKey));
-
-  await fs.writeFile(targetPath, buffer);
+  if (isBlobConfigured()) {
+    const blob = await put(`zanima/${fileName}`, buffer, {
+      access: "private",
+      contentType: file.type,
+      addRandomSuffix: false,
+    });
+    storageKey = `${BLOB_PREFIX}${blob.pathname}`;
+  } else {
+    const root = getPrivateStorageRoot();
+    await fs.mkdir(root, { recursive: true });
+    const targetPath = path.join(/*turbopackIgnore: true*/ root, path.basename(fileName));
+    await fs.writeFile(targetPath, buffer);
+  }
 
   const safeOriginalName = path
     .basename(file.name || "arquivo")
@@ -126,20 +145,50 @@ export async function savePrivateFile(params: {
 export async function readPrivateFileBytes(
   storageKey: string
 ): Promise<Buffer> {
+  if (storageKey.startsWith(BLOB_PREFIX)) {
+    const pathname = storageKey.slice(BLOB_PREFIX.length);
+    const result = await get(pathname, { access: "private" });
+    if (!result || result.statusCode !== 200 || !result.stream) {
+      throw new Error("Arquivo não encontrado no storage.");
+    }
+    const arr = await new Response(result.stream).arrayBuffer();
+    return Buffer.from(arr);
+  }
+
   const root = getPrivateStorageRoot();
   const safeKey = path.basename(storageKey);
   const fullPath = path.resolve(/*turbopackIgnore: true*/ root, safeKey);
   if (!fullPath.startsWith(root)) {
     throw new Error("Caminho de arquivo inválido.");
   }
-  return fs.readFile(fullPath);
+  try {
+    return await fs.readFile(fullPath);
+  } catch (err) {
+    if (isBlobConfigured()) {
+      const result = await get(`zanima/${safeKey}`, { access: "private" }).catch(
+        () => null
+      );
+      if (result && result.statusCode === 200 && result.stream) {
+        const arr = await new Response(result.stream).arrayBuffer();
+        return Buffer.from(arr);
+      }
+    }
+    throw err;
+  }
 }
 
 export async function deletePrivateFile(fileId: string): Promise<void> {
   const record = await prisma.storedFile.findUnique({ where: { id: fileId } });
   if (!record) return;
-  const root = getPrivateStorageRoot();
-  const fullPath = path.resolve(/*turbopackIgnore: true*/ root, path.basename(record.storageKey));
-  await fs.unlink(fullPath).catch(() => {});
+  if (record.storageKey.startsWith(BLOB_PREFIX) && isBlobConfigured()) {
+    await del(record.storageKey.slice(BLOB_PREFIX.length)).catch(() => {});
+  } else {
+    const root = getPrivateStorageRoot();
+    const fullPath = path.resolve(
+      /*turbopackIgnore: true*/ root,
+      path.basename(record.storageKey)
+    );
+    await fs.unlink(fullPath).catch(() => {});
+  }
   await prisma.storedFile.delete({ where: { id: fileId } }).catch(() => {});
 }
