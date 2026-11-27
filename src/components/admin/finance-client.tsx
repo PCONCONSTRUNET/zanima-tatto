@@ -18,7 +18,9 @@ import {
   CreditCard as CardIcon,
   Download,
   FileSpreadsheet,
+  Lock,
   Paperclip,
+  Percent,
   PieChart,
   Plus,
   SlidersHorizontal,
@@ -144,6 +146,28 @@ type StudioAppointmentItem = {
   receivedAmount: number;
 };
 
+type CashClosingItem = {
+  id: string;
+  periodDate: string;
+  periodEndDate: string | null;
+  periodLabel: string | null;
+  grossRevenue: number;
+  totalExpenses: number;
+  netResult: number;
+  pixTotal: number;
+  cardTotal: number;
+  cashTotal: number;
+  commissionPercent: number;
+  commissionAmount: number;
+  studioShareAmount: number;
+  countedCash: number | null;
+  cashDifference: number | null;
+  transferredToPersonal: boolean;
+  notes: string | null;
+  closedByName: string;
+  createdAt: string;
+};
+
 function shiftMonth(ym: string, offset: number): string {
   const [y, m] = ym.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1 + offset, 1));
@@ -204,6 +228,8 @@ function FinanceInner({
   initialGoals,
   projects,
   studioAppointments = [],
+  initialCommissionPercent = 30,
+  initialClosings = [],
 }: {
   fixedContext: "STUDIO" | "PERSONAL";
   isOwner: boolean;
@@ -219,6 +245,8 @@ function FinanceInner({
   initialGoals: GoalItem[];
   projects: Array<{ id: string; name: string }>;
   studioAppointments?: StudioAppointmentItem[];
+  initialCommissionPercent?: number;
+  initialClosings?: CashClosingItem[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -324,6 +352,35 @@ function FinanceInner({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fechamento de Caixa & Comissão sobre Faturamento
+  const [commissionPctInput, setCommissionPctInput] = useState(
+    String(initialCommissionPercent ?? 30)
+  );
+  const [savedCommissionPct, setSavedCommissionPct] = useState(
+    initialCommissionPercent ?? 30
+  );
+  const [savingCommission, setSavingCommission] = useState(false);
+  const [commissionFeedback, setCommissionFeedback] = useState<string | null>(
+    null
+  );
+  const [closingModalOpen, setClosingModalOpen] = useState(false);
+  const [closingCountedCash, setClosingCountedCash] = useState("");
+  const [closingNotes, setClosingNotes] = useState("");
+  const [closingTransferEnabled, setClosingTransferEnabled] = useState(false);
+  const [closingFromAccount, setClosingFromAccount] = useState(
+    studioTransferAccounts[0]?.id || ""
+  );
+  const [closingToAccount, setClosingToAccount] = useState(
+    personalTransferAccounts[0]?.id || ""
+  );
+  const [deleteClosingId, setDeleteClosingId] = useState<string | null>(null);
+
+  const parsedCommissionPct = useMemo(() => {
+    const raw = Number(commissionPctInput.replace(",", "."));
+    if (!Number.isFinite(raw)) return 0;
+    return Math.min(100, Math.max(0, Math.round(raw * 100) / 100));
+  }, [commissionPctInput]);
 
   const matchesSelectedPeriod = useMemo(() => {
     return (dateISO: string) => {
@@ -715,6 +772,135 @@ function FinanceInner({
     }
   };
 
+  const handleSaveCommissionPercent = async () => {
+    setSavingCommission(true);
+    setCommissionFeedback(null);
+    try {
+      const res = await fetch("/api/admin/finance/closings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commissionPercent: parsedCommissionPct }),
+      });
+      if (res.ok) {
+        setSavedCommissionPct(parsedCommissionPct);
+        setCommissionPctInput(String(parsedCommissionPct));
+        setCommissionFeedback("Salva!");
+        setTimeout(() => setCommissionFeedback(null), 2500);
+        router.refresh();
+      }
+    } finally {
+      setSavingCommission(false);
+    }
+  };
+
+  const openClosingModal = () => {
+    setError(null);
+    setClosingCountedCash("");
+    setClosingNotes("");
+    setClosingTransferEnabled(false);
+    setClosingFromAccount((prev) => prev || studioTransferAccounts[0]?.id || "");
+    setClosingToAccount((prev) => prev || personalTransferAccounts[0]?.id || "");
+    setClosingModalOpen(true);
+  };
+
+  const handleCreateCashClosing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+
+    const periodDate =
+      periodMode === "DAY"
+        ? dayFilter
+        : periodMode === "CUSTOM"
+        ? customFrom <= customTo
+          ? customFrom
+          : customTo
+        : periodMode === "MONTH"
+        ? `${monthFilter}-01`
+        : todayStr;
+
+    const periodEndDate =
+      periodMode === "CUSTOM"
+        ? customFrom <= customTo
+          ? customTo
+          : customFrom
+        : periodMode === "MONTH"
+        ? `${monthFilter}-${String(
+            new Date(
+              Date.UTC(
+                Number(monthFilter.slice(0, 4)),
+                Number(monthFilter.slice(5, 7)),
+                0
+              )
+            ).getUTCDate()
+          ).padStart(2, "0")}`
+        : null;
+
+    const parsedCounted =
+      closingCountedCash.trim() !== "" ? Number(closingCountedCash) : null;
+
+    try {
+      const res = await fetch("/api/admin/finance/closings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          periodDate,
+          periodEndDate,
+          periodLabel,
+          grossRevenue: metrics.settledIn,
+          totalExpenses: metrics.settledOut,
+          netResult: metrics.netResult,
+          pixTotal: metrics.pixIn,
+          cardTotal: metrics.cardIn,
+          cashTotal: metrics.cashIn,
+          commissionPercent: parsedCommissionPct,
+          countedCash:
+            parsedCounted !== null && Number.isFinite(parsedCounted)
+              ? parsedCounted
+              : null,
+          notes: closingNotes.trim() || undefined,
+          transferCommission:
+            closingTransferEnabled &&
+            closingFromAccount &&
+            closingToAccount &&
+            isOwner
+              ? {
+                  fromAccountId: closingFromAccount,
+                  toAccountId: closingToAccount,
+                }
+              : null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "Erro ao registrar fechamento de caixa.");
+        return;
+      }
+      setSavedCommissionPct(parsedCommissionPct);
+      setClosingModalOpen(false);
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteClosing = async () => {
+    if (!deleteClosingId) return;
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/finance/closings?id=${encodeURIComponent(deleteClosingId)}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setDeleteClosingId(null);
+        router.refresh();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCreateConfigEntity = async (
     payload: Record<string, unknown>,
     close: () => void
@@ -908,19 +1094,32 @@ function FinanceInner({
             </p>
           </div>
 
-          {isOwner && transferAccounts.length >= 2 ? (
-            <button
-              type="button"
-              onClick={() => setTransferModalOpen(true)}
-              className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--bg-canvas)]/80 border border-[var(--border-default)] text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer transition-all active:scale-[0.96] shrink-0"
-            >
-              <ArrowLeftRight
-                className="h-3.5 w-3.5 text-[var(--brand-champagne)]"
-                strokeWidth={1.8}
-              />
-              <span>{isStudio ? "Retirada" : "Transferir"}</span>
-            </button>
-          ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+            {isStudio ? (
+              <button
+                type="button"
+                onClick={openClosingModal}
+                className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-champagne-subtle)] border border-[var(--brand-champagne)]/40 text-xs font-semibold text-[var(--brand-champagne)] hover:opacity-90 cursor-pointer transition-all active:scale-[0.96]"
+              >
+                <Lock className="h-3.5 w-3.5" strokeWidth={1.8} />
+                <span>Fechar caixa</span>
+              </button>
+            ) : null}
+
+            {isOwner && transferAccounts.length >= 2 ? (
+              <button
+                type="button"
+                onClick={() => setTransferModalOpen(true)}
+                className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--bg-canvas)]/80 border border-[var(--border-default)] text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer transition-all active:scale-[0.96]"
+              >
+                <ArrowLeftRight
+                  className="h-3.5 w-3.5 text-[var(--brand-champagne)]"
+                  strokeWidth={1.8}
+                />
+                <span>{isStudio ? "Retirada" : "Transferir"}</span>
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {/* Entrou vs Saiu limpos */}
@@ -1008,6 +1207,105 @@ function FinanceInner({
               {formatBRL(metrics.cashIn, hideValues)}
             </p>
           </div>
+        </section>
+      ) : null}
+
+      {/* Comissão sobre Faturamento & Fechamento de Caixa (Estúdio) */}
+      {isStudio ? (
+        <section className="rounded-[24px] bg-[var(--bg-surface)] border border-[var(--border-default)] p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-[var(--brand-champagne-subtle)] text-[var(--brand-champagne)] flex items-center justify-center shrink-0">
+                <Percent className="h-4 w-4" strokeWidth={1.9} />
+              </div>
+              <div>
+                <h2 className="font-display text-sm font-semibold text-[var(--text-primary)]">
+                  Comissão sobre o faturamento
+                </h2>
+                <p className="text-[11px] text-[var(--text-secondary)]">
+                  Calculada automaticamente sobre o total que entrou ({periodLabel})
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--bg-canvas)] px-3 h-8 text-xs">
+                <span className="text-[var(--text-secondary)]">Comissão:</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.5"
+                  value={commissionPctInput}
+                  onChange={(e) => setCommissionPctInput(e.target.value)}
+                  className="w-12 bg-transparent text-right font-semibold text-[var(--text-primary)] focus:outline-none tabular-nums text-base md:text-xs"
+                  aria-label="Porcentagem de comissão"
+                />
+                <span className="font-semibold text-[var(--brand-champagne)]">%</span>
+              </label>
+
+              {parsedCommissionPct !== savedCommissionPct ? (
+                <button
+                  type="button"
+                  onClick={handleSaveCommissionPercent}
+                  disabled={savingCommission}
+                  className="h-8 px-3 rounded-full bg-[var(--action-primary)] text-[var(--action-primary-fg)] text-xs font-semibold cursor-pointer"
+                >
+                  {savingCommission ? "Salvando..." : "Salvar %"}
+                </button>
+              ) : commissionFeedback ? (
+                <span className="text-[11px] font-medium text-[var(--status-success)]">
+                  {commissionFeedback}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {(() => {
+            const commissionValue =
+              Math.round(metrics.settledIn * parsedCommissionPct) / 100;
+            const studioKeepValue =
+              Math.round((metrics.settledIn - commissionValue) * 100) / 100;
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-default)] px-3.5 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
+                    Faturamento
+                  </p>
+                  <p className="text-sm font-semibold tabular-nums text-[var(--text-primary)] mt-0.5">
+                    {formatBRL(metrics.settledIn, hideValues)}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-[var(--brand-champagne-subtle)]/40 border border-[var(--brand-champagne)]/35 px-3.5 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--brand-champagne)] font-medium">
+                    Comissão ({parsedCommissionPct}%)
+                  </p>
+                  <p className="text-sm font-semibold tabular-nums text-[var(--text-primary)] mt-0.5">
+                    {formatBRL(commissionValue, hideValues)}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-default)] px-3.5 py-2.5 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
+                      Parte do estúdio
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums text-[var(--text-primary)] mt-0.5">
+                      {formatBRL(studioKeepValue, hideValues)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openClosingModal}
+                    className="h-8 px-3 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-default)] text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--brand-champagne)] cursor-pointer shrink-0"
+                  >
+                    Fechar caixa
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </section>
       ) : null}
 
@@ -1825,6 +2123,84 @@ function FinanceInner({
               </ul>
             )}
           </section>
+
+          {isStudio ? (
+            <section className="rounded-[24px] bg-[var(--bg-surface)] border border-[var(--border-default)] overflow-hidden">
+              <div className="px-4 py-3.5 border-b border-[var(--border-default)] flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-[var(--brand-champagne)]" />
+                  <h2 className="font-display text-sm font-semibold">
+                    Histórico de fechamentos de caixa ({initialClosings.length})
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={openClosingModal}
+                  className="text-xs font-semibold text-[var(--brand-champagne)] cursor-pointer"
+                >
+                  + Fechar caixa
+                </button>
+              </div>
+              {initialClosings.length === 0 ? (
+                <p className="px-4 py-5 text-xs text-[var(--text-secondary)]">
+                  Nenhum fechamento de caixa registrado ainda.
+                </p>
+              ) : (
+                <ul className="divide-y divide-[var(--border-default)] text-xs">
+                  {initialClosings.map((c) => (
+                    <li
+                      key={c.id}
+                      className="px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-medium text-[var(--text-primary)]">
+                            {c.periodLabel || formatDateBR(c.periodDate)}
+                          </span>
+                          {c.transferredToPersonal ? (
+                            <StatusBadge
+                              label="Comissão transferida"
+                              tone="success"
+                            />
+                          ) : null}
+                        </div>
+                        <p className="text-[11px] text-[var(--text-secondary)] tabular-nums">
+                          Faturamento: {formatBRL(c.grossRevenue, hideValues)} • Saídas:{" "}
+                          {formatBRL(c.totalExpenses, hideValues)} • Líquido:{" "}
+                          {formatBRL(c.netResult, hideValues)}
+                        </p>
+                        <p className="text-[11px] text-[var(--brand-champagne)] tabular-nums">
+                          Comissão ({c.commissionPercent}%):{" "}
+                          {formatBRL(c.commissionAmount, hideValues)} • Estúdio:{" "}
+                          {formatBRL(c.studioShareAmount, hideValues)}
+                          {c.cashDifference !== null
+                            ? ` • Diferença dinheiro: ${formatBRL(
+                                c.cashDifference,
+                                hideValues
+                              )}`
+                            : ""}
+                        </p>
+                        {c.notes ? (
+                          <p className="text-[11px] text-[var(--text-muted)]">
+                            {c.notes}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <button
+                        type="button"
+                        aria-label="Excluir fechamento"
+                        onClick={() => setDeleteClosingId(c.id)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
         </div>
       ) : null}
 
@@ -2936,6 +3312,236 @@ function FinanceInner({
           </div>
         </div>
       ) : null}
+
+      {/* MODAL FECHAMENTO DE CAIXA */}
+      {closingModalOpen && isStudio ? (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setClosingModalOpen(false);
+          }}
+          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-xs p-0 md:p-4"
+        >
+          <form
+            onSubmit={handleCreateCashClosing}
+            className="w-full max-h-[90dvh] md:max-w-lg bg-[var(--bg-surface)] border-t md:border border-[var(--border-strong)]/80 rounded-t-[28px] md:rounded-[26px] p-5 space-y-4 overflow-y-auto shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base font-semibold">
+                  Fechamento de Caixa
+                </h3>
+                <p className="text-[11px] text-[var(--brand-champagne)] font-medium mt-0.5">
+                  Período: {periodLabel}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar modal"
+                onClick={() => setClosingModalOpen(false)}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {error ? (
+              <div className="p-2.5 rounded-xl bg-[var(--status-danger-bg)] text-[var(--status-danger)] text-xs">
+                {error}
+              </div>
+            ) : null}
+
+            {/* Resumo financeiro do período */}
+            <div className="rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-default)] p-3.5 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)]">
+                  Faturamento bruto (Entrou)
+                </span>
+                <span className="font-semibold tabular-nums text-[var(--status-success)]">
+                  {formatBRL(metrics.settledIn, hideValues)}
+                </span>
+              </div>
+              <div className="flex justify-between text-[11px] text-[var(--text-secondary)] pl-2">
+                <span>Pix: {formatBRL(metrics.pixIn, hideValues)}</span>
+                <span>Cartão: {formatBRL(metrics.cardIn, hideValues)}</span>
+                <span>Dinheiro: {formatBRL(metrics.cashIn, hideValues)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)]">Saídas pagas</span>
+                <span className="font-semibold tabular-nums text-[var(--status-danger)]">
+                  − {formatBRL(metrics.settledOut, hideValues)}
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-[var(--border-default)] pt-2">
+                <span className="font-semibold text-[var(--text-primary)]">
+                  Resultado líquido do caixa
+                </span>
+                <span className="font-semibold tabular-nums text-[var(--text-primary)]">
+                  {formatBRL(metrics.netResult, hideValues)}
+                </span>
+              </div>
+            </div>
+
+            {/* Porcentagem de comissão */}
+            {(() => {
+              const commissionAmount =
+                Math.round(metrics.settledIn * parsedCommissionPct) / 100;
+              const studioShareAmount =
+                Math.round((metrics.settledIn - commissionAmount) * 100) / 100;
+              return (
+                <div className="rounded-2xl border border-[var(--brand-champagne)]/35 bg-[var(--brand-champagne-subtle)]/25 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-[var(--text-primary)]">
+                        Comissão sobre faturamento
+                      </p>
+                      <p className="text-[11px] text-[var(--text-secondary)]">
+                        Defina a porcentagem desejada
+                      </p>
+                    </div>
+                    <label className="inline-flex items-center gap-1 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] px-2.5 h-9 text-xs">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.5"
+                        value={commissionPctInput}
+                        onChange={(e) => setCommissionPctInput(e.target.value)}
+                        className="w-14 bg-transparent text-right font-semibold text-[var(--text-primary)] focus:outline-none tabular-nums text-base md:text-sm"
+                      />
+                      <span className="font-semibold text-[var(--brand-champagne)]">
+                        %
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-default)] px-3 py-2">
+                      <p className="text-[10px] uppercase text-[var(--brand-champagne)]">
+                        Comissão ({parsedCommissionPct}%)
+                      </p>
+                      <p className="text-sm font-semibold tabular-nums mt-0.5">
+                        {formatBRL(commissionAmount, hideValues)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-default)] px-3 py-2">
+                      <p className="text-[10px] uppercase text-[var(--text-secondary)]">
+                        Parte do estúdio
+                      </p>
+                      <p className="text-sm font-semibold tabular-nums mt-0.5">
+                        {formatBRL(studioShareAmount, hideValues)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <Field label="Dinheiro contado na gaveta (opcional)">
+              <CurrencyInput
+                value={closingCountedCash}
+                onValueChange={setClosingCountedCash}
+              />
+            </Field>
+
+            {closingCountedCash.trim() !== "" ? (
+              <p className="text-[11px] text-[var(--text-secondary)] -mt-2 tabular-nums">
+                Diferença em relação ao dinheiro registrado:{" "}
+                <strong className="text-[var(--text-primary)]">
+                  {formatBRL(
+                    Number(closingCountedCash || 0) - metrics.cashIn,
+                    hideValues
+                  )}
+                </strong>
+              </p>
+            ) : null}
+
+            {isOwner &&
+            studioTransferAccounts.length > 0 &&
+            personalTransferAccounts.length > 0 &&
+            metrics.settledIn > 0 &&
+            parsedCommissionPct > 0 ? (
+              <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-canvas)] p-3 space-y-2.5">
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={closingTransferEnabled}
+                    onChange={(e) =>
+                      setClosingTransferEnabled(e.target.checked)
+                    }
+                    className="h-4 w-4 accent-[var(--brand-champagne)] rounded"
+                  />
+                  <span>
+                    Transferir comissão para minha Conta Pessoal ao fechar
+                  </span>
+                </label>
+
+                {closingTransferEnabled ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <Field label="Saindo de (Estúdio)">
+                      <Select
+                        value={closingFromAccount}
+                        onChange={(e) => setClosingFromAccount(e.target.value)}
+                      >
+                        {studioTransferAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Entrando em (Pessoal)">
+                      <Select
+                        value={closingToAccount}
+                        onChange={(e) => setClosingToAccount(e.target.value)}
+                      >
+                        {personalTransferAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <Field label="Observações do fechamento (opcional)">
+              <Textarea
+                value={closingNotes}
+                onChange={(e) => setClosingNotes(e.target.value)}
+                rows={2}
+                placeholder="Ex: Caixa conferido sem pendências..."
+              />
+            </Field>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setClosingModalOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={saving}>
+                Confirmar fechamento
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      <ConfirmModal
+        open={Boolean(deleteClosingId)}
+        title="Excluir fechamento de caixa"
+        description="Tem certeza que deseja excluir este registro de fechamento de caixa?"
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        danger
+        loading={saving}
+        onConfirm={handleDeleteClosing}
+        onCancel={() => !saving && setDeleteClosingId(null)}
+      />
     </div>
   );
 }
@@ -2955,6 +3561,8 @@ export function FinanceClient(props: {
   initialGoals: GoalItem[];
   projects: Array<{ id: string; name: string }>;
   studioAppointments?: StudioAppointmentItem[];
+  initialCommissionPercent?: number;
+  initialClosings?: CashClosingItem[];
 }) {
   return (
     <Suspense

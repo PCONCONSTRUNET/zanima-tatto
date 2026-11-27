@@ -264,6 +264,7 @@ model User {
   notifications         Notification[]
   auditLogs             AuditLog[]
   lgpdRequests          LgpdRequest[]
+  cashClosings          CashClosing[]
 }
 
 model AuthSession {
@@ -1141,6 +1142,7 @@ model StudioSetting {
   cityState               String   @default("")
   defaultDepositPercent   Int      @default(30)
   defaultDepositFixed     Decimal? @db.Decimal(12, 2)
+  commissionPercent       Decimal  @default(30) @db.Decimal(5, 2)
   cancellationPolicyHours Int      @default(48)
   acceptedPaymentMethods  String[] @default(["PIX", "CREDIT_CARD", "CASH"])
   heroHeadline            String   @default("Traços finos com intenção, leveza e permanência.")
@@ -1150,4 +1152,31 @@ model StudioSetting {
   careAfterJson           Json     @default("[]")
   faqJson                 Json     @default("[]")
   updatedAt               DateTime @updatedAt
+}
+
+model CashClosing {
+  id                    String    @id @default(cuid())
+  closedByUserId        String
+  periodDate            DateTime  @db.Date
+  periodEndDate         DateTime? @db.Date
+  periodLabel           String?
+  grossRevenue          Decimal   @db.Decimal(12, 2)
+  totalExpenses         Decimal   @db.Decimal(12, 2)
+  netResult             Decimal   @db.Decimal(12, 2)
+  pixTotal              Decimal   @default(0) @db.Decimal(12, 2)
+  cardTotal             Decimal   @default(0) @db.Decimal(12, 2)
+  cashTotal             Decimal   @default(0) @db.Decimal(12, 2)
+  commissionPercent     Decimal   @default(0) @db.Decimal(5, 2)
+  commissionAmount      Decimal   @default(0) @db.Decimal(12, 2)
+  studioShareAmount     Decimal   @default(0) @db.Decimal(12, 2)
+  countedCash           Decimal?  @db.Decimal(12, 2)
+  cashDifference        Decimal?  @db.Decimal(12, 2)
+  transferredToPersonal Boolean   @default(false)
+  notes                 String?
+  createdAt             DateTime  @default(now())
+
+  closedBy User @relation(fields: [closedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([periodDate])
+  @@index([closedByUserId])
 }

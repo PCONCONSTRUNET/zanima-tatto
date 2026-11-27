@@ -23,6 +23,8 @@ export default async function AdminFinanceiroPage() {
     goals,
     projects,
     appointments,
+    studioSetting,
+    cashClosings,
   ] = await Promise.all([
     prisma.financialAccount.findMany({
       where: { context: "STUDIO", isActive: true },
@@ -86,6 +88,15 @@ export default async function AdminFinanceiroPage() {
           select: { amount: true, status: true },
         },
       },
+    }),
+    prisma.studioSetting.findUnique({
+      where: { id: "studio-default" },
+      select: { commissionPercent: true },
+    }),
+    prisma.cashClosing.findMany({
+      orderBy: [{ periodDate: "desc" }, { createdAt: "desc" }],
+      take: 40,
+      include: { closedBy: { select: { name: true } } },
     }),
   ]);
 
@@ -173,6 +184,33 @@ export default async function AdminFinanceiroPage() {
         targetDate: g.targetDate ? g.targetDate.toISOString().slice(0, 10) : null,
       }))}
       projects={projects}
+      initialCommissionPercent={
+        studioSetting ? toNumber(studioSetting.commissionPercent) : 30
+      }
+      initialClosings={cashClosings.map((c) => ({
+        id: c.id,
+        periodDate: c.periodDate.toISOString().slice(0, 10),
+        periodEndDate: c.periodEndDate
+          ? c.periodEndDate.toISOString().slice(0, 10)
+          : null,
+        periodLabel: c.periodLabel,
+        grossRevenue: toNumber(c.grossRevenue),
+        totalExpenses: toNumber(c.totalExpenses),
+        netResult: toNumber(c.netResult),
+        pixTotal: toNumber(c.pixTotal),
+        cardTotal: toNumber(c.cardTotal),
+        cashTotal: toNumber(c.cashTotal),
+        commissionPercent: toNumber(c.commissionPercent),
+        commissionAmount: toNumber(c.commissionAmount),
+        studioShareAmount: toNumber(c.studioShareAmount),
+        countedCash: c.countedCash !== null ? toNumber(c.countedCash) : null,
+        cashDifference:
+          c.cashDifference !== null ? toNumber(c.cashDifference) : null,
+        transferredToPersonal: c.transferredToPersonal,
+        notes: c.notes,
+        closedByName: c.closedBy.name,
+        createdAt: c.createdAt.toISOString(),
+      }))}
       studioAppointments={appointments.map((a) => {
         const txReceived = a.financialTransactions
           .filter((tx) => tx.status === "RECEIVED" || tx.status === "PAID")
