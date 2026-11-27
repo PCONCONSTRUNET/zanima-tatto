@@ -16,6 +16,7 @@ export default async function AdminFinanceiroPage() {
   const isOwner = canAccessPersonalFinance(user);
   const todayStr = toISODateSP();
   const currentMonth = todayStr.slice(0, 7);
+  const currentMonthStart = new Date(`${currentMonth}-01T00:00:00.000Z`);
 
   const [
     studioAccounts,
@@ -29,6 +30,8 @@ export default async function AdminFinanceiroPage() {
     appointments,
     studioSetting,
     cashClosings,
+    prevStudioGrossAgg,
+    studioToPersonalAgg,
   ] = await Promise.all([
     prisma.financialAccount.findMany({
       where: { context: "STUDIO", isActive: true },
@@ -101,6 +104,22 @@ export default async function AdminFinanceiroPage() {
       orderBy: [{ periodDate: "desc" }, { createdAt: "desc" }],
       take: 40,
       include: { closedBy: { select: { name: true } } },
+    }),
+    prisma.financialTransaction.aggregate({
+      where: {
+        context: "STUDIO",
+        type: "INCOME",
+        status: "RECEIVED",
+        competenceDate: { lt: currentMonthStart },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.internalTransfer.aggregate({
+      where: {
+        fromAccount: { context: "STUDIO" },
+        toAccount: { context: "PERSONAL" },
+      },
+      _sum: { amount: true },
     }),
   ]);
 
@@ -192,6 +211,10 @@ export default async function AdminFinanceiroPage() {
       initialCommissionPercent={
         studioSetting ? toNumber(studioSetting.commissionPercent) : 30
       }
+      prevMonthsStudioGross={toNumber(prevStudioGrossAgg._sum.amount)}
+      allStudioToPersonalTransferred={toNumber(
+        studioToPersonalAgg._sum.amount
+      )}
       initialClosings={cashClosings.map((c) => ({
         id: c.id,
         periodDate: c.periodDate.toISOString().slice(0, 10),

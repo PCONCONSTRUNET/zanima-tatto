@@ -231,6 +231,8 @@ function FinanceInner({
   studioAppointments = [],
   initialCommissionPercent = 30,
   initialClosings = [],
+  prevMonthsStudioGross = 0,
+  allStudioToPersonalTransferred = 0,
 }: {
   fixedContext: "STUDIO" | "PERSONAL";
   isOwner: boolean;
@@ -248,6 +250,8 @@ function FinanceInner({
   studioAppointments?: StudioAppointmentItem[];
   initialCommissionPercent?: number;
   initialClosings?: CashClosingItem[];
+  prevMonthsStudioGross?: number;
+  allStudioToPersonalTransferred?: number;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -378,11 +382,46 @@ function FinanceInner({
   const [deleteClosingId, setDeleteClosingId] = useState<string | null>(null);
   const [deleteTransferId, setDeleteTransferId] = useState<string | null>(null);
 
+  // Modal de comissão pendente de meses anteriores
+  const [pendingCommissionModalOpen, setPendingCommissionModalOpen] =
+    useState(false);
+  const [pendingTransferAmount, setPendingTransferAmount] = useState("");
+  const [pendingTransferFrom, setPendingTransferFrom] = useState(
+    studioTransferAccounts[0]?.id || ""
+  );
+  const [pendingTransferTo, setPendingTransferTo] = useState(
+    personalTransferAccounts[0]?.id || ""
+  );
+  const [pendingTransferDate, setPendingTransferDate] = useState(todayStr);
+
   const parsedCommissionPct = useMemo(() => {
     const raw = Number(commissionPctInput.replace(",", "."));
     if (!Number.isFinite(raw)) return 0;
     return Math.min(100, Math.max(0, Math.round(raw * 100) / 100));
   }, [commissionPctInput]);
+
+  const prevCommissionSummary = useMemo(() => {
+    const pct = isStudio ? parsedCommissionPct : savedCommissionPct;
+    const generated =
+      Math.round(prevMonthsStudioGross * pct) / 100;
+    const pending = Math.max(
+      0,
+      Math.round((generated - allStudioToPersonalTransferred) * 100) / 100
+    );
+    return {
+      prevGross: prevMonthsStudioGross,
+      pct,
+      generated,
+      alreadyTransferred: allStudioToPersonalTransferred,
+      pending,
+    };
+  }, [
+    isStudio,
+    parsedCommissionPct,
+    savedCommissionPct,
+    prevMonthsStudioGross,
+    allStudioToPersonalTransferred,
+  ]);
 
   const matchesSelectedPeriod = useMemo(() => {
     return (dateISO: string) => {
@@ -1000,6 +1039,53 @@ function FinanceInner({
     }
   };
 
+  const openPendingCommissionModal = () => {
+    setError(null);
+    setPendingTransferAmount(prevCommissionSummary.pending.toFixed(2));
+    setPendingTransferFrom(
+      (prev) => prev || studioTransferAccounts[0]?.id || ""
+    );
+    setPendingTransferTo(
+      (prev) => prev || personalTransferAccounts[0]?.id || ""
+    );
+    setPendingTransferDate(todayStr);
+    setPendingCommissionModalOpen(true);
+  };
+
+  const handleTransferPendingCommission = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = Number(pendingTransferAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setError("Informe um valor maior que zero.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/finance/transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromAccountId: pendingTransferFrom,
+          toAccountId: pendingTransferTo,
+          amount: amt,
+          transferDate: pendingTransferDate,
+          description: "Comissão pendente de meses anteriores",
+          transferKind: "OWNER_WITHDRAWAL",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "Não foi possível transferir a comissão.");
+        return;
+      }
+      setPendingCommissionModalOpen(false);
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCreateConfigEntity = async (
     payload: Record<string, unknown>,
     close: () => void
@@ -1422,6 +1508,37 @@ function FinanceInner({
               {formatBRL(metrics.transfersOut, hideValues)}
             </p>
           ) : null}
+        </section>
+      ) : null}
+
+      {/* Alerta Automático: Comissão pendente de meses anteriores (Estúdio e Pessoal) */}
+      {isOwner &&
+      prevCommissionSummary.pending > 0.01 &&
+      studioTransferAccounts.length > 0 &&
+      personalTransferAccounts.length > 0 ? (
+        <section className="rounded-2xl border border-[var(--brand-champagne)]/45 bg-[var(--brand-champagne-subtle)]/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="min-w-0 space-y-0.5">
+            <p className="text-xs font-semibold text-[var(--text-primary)]">
+              Comissão pendente de mês anterior:{" "}
+              <span className="text-[var(--brand-champagne)] tabular-nums">
+                {formatBRL(prevCommissionSummary.pending, hideValues)}
+              </span>
+            </p>
+            <p className="text-[11px] text-[var(--text-secondary)] tabular-nums">
+              Meses anteriores geraram{" "}
+              {formatBRL(prevCommissionSummary.generated, hideValues)} (
+              {prevCommissionSummary.pct}%) e falta transferir este saldo para sua
+              Conta Pessoal.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openPendingCommissionModal}
+            className="h-9 px-4 rounded-full bg-[var(--action-primary)] text-[var(--action-primary-fg)] text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={2} />
+            <span>Transferir pendente</span>
+          </button>
         </section>
       ) : null}
 
@@ -3812,6 +3929,139 @@ function FinanceInner({
         onConfirm={handleDeleteTransfer}
         onCancel={() => !saving && setDeleteTransferId(null)}
       />
+
+      {/* MODAL TRANSFERIR COMISSÃO PENDENTE DE MESES ANTERIORES */}
+      {pendingCommissionModalOpen && isOwner ? (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setPendingCommissionModalOpen(false);
+            }
+          }}
+          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-xs p-0 md:p-4"
+        >
+          <form
+            onSubmit={handleTransferPendingCommission}
+            className="w-full max-h-[88dvh] md:max-w-md bg-[var(--bg-surface)] border-t md:border border-[var(--border-strong)]/80 rounded-t-[28px] md:rounded-[26px] p-5 space-y-4 overflow-y-auto shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base font-semibold">
+                  Comissão pendente de meses anteriores
+                </h3>
+                <p className="text-[11px] text-[var(--brand-champagne)] font-medium mt-0.5">
+                  Estúdio → Conta Pessoal
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar modal"
+                onClick={() => setPendingCommissionModalOpen(false)}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {error ? (
+              <div className="p-2.5 rounded-xl bg-[var(--status-danger-bg)] text-[var(--status-danger)] text-xs">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-default)] p-3.5 space-y-1.5 text-xs tabular-nums">
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)]">
+                  Faturamento de meses anteriores
+                </span>
+                <span className="font-medium">
+                  {formatBRL(prevCommissionSummary.prevGross, hideValues)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)]">
+                  Comissão gerada ({prevCommissionSummary.pct}%)
+                </span>
+                <span className="font-medium">
+                  {formatBRL(prevCommissionSummary.generated, hideValues)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)]">
+                  Já transferido para Pessoal
+                </span>
+                <span className="font-medium">
+                  − {formatBRL(prevCommissionSummary.alreadyTransferred, hideValues)}
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-[var(--border-default)] pt-1.5">
+                <span className="font-semibold text-[var(--text-primary)]">
+                  Saldo pendente a transferir
+                </span>
+                <span className="font-semibold text-[var(--brand-champagne)]">
+                  {formatBRL(prevCommissionSummary.pending, hideValues)}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <Field label="Saindo de (Estúdio)">
+                <Select
+                  value={pendingTransferFrom}
+                  onChange={(e) => setPendingTransferFrom(e.target.value)}
+                >
+                  {studioTransferAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Entrando em (Pessoal)">
+                <Select
+                  value={pendingTransferTo}
+                  onChange={(e) => setPendingTransferTo(e.target.value)}
+                >
+                  {personalTransferAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <Field label="Valor a transferir">
+                <CurrencyInput
+                  value={pendingTransferAmount}
+                  onValueChange={setPendingTransferAmount}
+                  required
+                />
+              </Field>
+              <Field label="Data da transferência">
+                <IosDatePicker
+                  value={pendingTransferDate}
+                  onChange={setPendingTransferDate}
+                />
+              </Field>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setPendingCommissionModalOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Transferindo..." : "Transferir para Pessoal"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3833,6 +4083,8 @@ export function FinanceClient(props: {
   studioAppointments?: StudioAppointmentItem[];
   initialCommissionPercent?: number;
   initialClosings?: CashClosingItem[];
+  prevMonthsStudioGross?: number;
+  allStudioToPersonalTransferred?: number;
 }) {
   return (
     <Suspense

@@ -15,6 +15,7 @@ export default async function AdminPessoalPage() {
 
   const todayStr = toISODateSP();
   const currentMonth = todayStr.slice(0, 7);
+  const currentMonthStart = new Date(`${currentMonth}-01T00:00:00.000Z`);
 
   const [
     personalAccounts,
@@ -24,6 +25,9 @@ export default async function AdminPessoalPage() {
     transactions,
     transfers,
     goals,
+    studioSetting,
+    prevStudioGrossAgg,
+    studioToPersonalAgg,
   ] = await Promise.all([
     prisma.financialAccount.findMany({
       where: { ownerUserId: user.id, context: "PERSONAL", isActive: true },
@@ -64,6 +68,26 @@ export default async function AdminPessoalPage() {
     prisma.financialGoal.findMany({
       where: { ownerUserId: user.id, context: "PERSONAL" },
       orderBy: { createdAt: "desc" },
+    }),
+    prisma.studioSetting.findUnique({
+      where: { id: "studio-default" },
+      select: { commissionPercent: true },
+    }),
+    prisma.financialTransaction.aggregate({
+      where: {
+        context: "STUDIO",
+        type: "INCOME",
+        status: "RECEIVED",
+        competenceDate: { lt: currentMonthStart },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.internalTransfer.aggregate({
+      where: {
+        fromAccount: { context: "STUDIO" },
+        toAccount: { context: "PERSONAL" },
+      },
+      _sum: { amount: true },
     }),
   ]);
 
@@ -150,6 +174,13 @@ export default async function AdminPessoalPage() {
         targetDate: g.targetDate ? g.targetDate.toISOString().slice(0, 10) : null,
       }))}
       projects={[]}
+      initialCommissionPercent={
+        studioSetting ? toNumber(studioSetting.commissionPercent) : 30
+      }
+      prevMonthsStudioGross={toNumber(prevStudioGrossAgg._sum.amount)}
+      allStudioToPersonalTransferred={toNumber(
+        studioToPersonalAgg._sum.amount
+      )}
     />
   );
 }
